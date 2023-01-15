@@ -1,4 +1,10 @@
-// pragma solidity =0.7.6;
+/// @title NFT positions
+/// @notice Wraps Uniswap V3 positions in the ERC721 non-fungible token interface
+archetype NonfungiblePositionManager(
+    const tokenDescriptor___: address, 
+    const factory: address, 
+    const WETH9: address
+)// pragma solidity =0.7.6;
 // pragma abicoder v2;
 
 // import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
@@ -16,14 +22,6 @@
 // import './base/PeripheryValidation.sol';
 // import './base/SelfPermit.sol';
 // import './base/PoolInitializer.sol';
-
-/// @title NFT positions
-/// @notice Wraps Uniswap V3 positions in the ERC721 non-fungible token interface
-archetype NonfungiblePositionManager(
-    const _tokenDescriptor: address, 
-    const factory: address, 
-    const WETH9: address
-)
 
 constant name = "Uniswap V3 Positions NFT-V1";
 constant symbol = "UNI-V3-POS";
@@ -84,14 +82,14 @@ constant versionHash = keccak256(bytes(1));
     variable _nextPoolId: nat = 1;
 
     /// @dev The address of the token descriptor contract, which handles generating token URIs for position tokens
-    // address private immutable _tokenDescriptor;
+    // address private immutable tokenDescriptor___;
 
     // constructor(
     //     address _factory,
     //     address _WETH9,
-    //     address _tokenDescriptor_
+    //     address tokenDescriptor____
     // ) ERC721Permit('Uniswap V3 Positions NFT-V1', 'UNI-V3-POS', '1') PeripheryImmutableState(_factory, _WETH9) {
-    //     _tokenDescriptor = _tokenDescriptor_;
+    //     tokenDescriptor___ = tokenDescriptor____;
     // }
 
     /// @inheritdoc INonfungiblePositionManager
@@ -213,7 +211,7 @@ constant versionHash = keccak256(bytes(1));
     : string
     {
         // require(_exists(tokenId));
-        // return INonfungibleTokenPositionDescriptor(_tokenDescriptor).tokenURI(this, tokenId);
+        // return INonfungibleTokenPositionDescriptor(tokenDescriptor___).tokenURI(this, tokenId);
     }
 
     // save bytecode by removing implementation of unused method

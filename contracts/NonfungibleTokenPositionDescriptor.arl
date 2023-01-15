@@ -1,3 +1,7 @@
+/// @title Describes NFT token positions
+/// @notice Produces a string containing the data URI for a JSON metadata string
+archetype NonfungibleTokenPositionDescriptor(const WETH9: address, const nativeCurrencyLabelBytes: bytes /* bytes32 */)
+
 // SPDX-License-Identifier: GPL-2.0-or-later
 // pragma solidity =0.7.6;
 // pragma abicoder v2;
@@ -13,9 +17,6 @@
 // import './libraries/NFTDescriptor.sol';
 // import './libraries/TokenRatioSortOrder.sol';
 
-/// @title Describes NFT token positions
-/// @notice Produces a string containing the data URI for a JSON metadata string
-archetype NonfungibleTokenPositionDescriptor(const WETH9: address, const nativeCurrencyLabelBytes: bytes /* bytes32 */)
 //  is INonfungibleTokenPositionDescriptor 
 // {
     // constant DAI : address = 0x6B175474E89094C44Da98b954EedeAC495271d0F
