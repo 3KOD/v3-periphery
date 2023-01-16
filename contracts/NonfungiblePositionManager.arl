@@ -4,7 +4,8 @@ archetype NonfungiblePositionManager(
     const tokenDescriptor___: address, 
     const factory: address, 
     const WETH9: address
-)// pragma solidity =0.7.6;
+)
+// pragma solidity =0.7.6;
 // pragma abicoder v2;
 
 // import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
