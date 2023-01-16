@@ -1,0 +1,13 @@
+{
+  "symbol": "KODOS",
+  "name": "Kodex V3 Positions NFT-V1",
+  "decimals": 0,
+  "description": "Kodex V3 NonfungiblePositionManager",
+  "artifactUri": "ipfs://QmNpYi2xfZej74GFiQ8e16uKvwwE48K7yssGaKERJbexF4",
+  "displayUri": "ipfs://QmNpYi2xfZej74GFiQ8e16uKvwwE48K7yssGaKERJbexF4",
+  "thumbnailUri": "ipfs://QmNpYi2xfZej74GFiQ8e16uKvwwE48K7yssGaKERJbexF4",
+  "isTransferable": true,
+  "isBooleanAmount": true,
+  "shouldPreferSymbol": false,
+  "tags": ["NFT"]
+}
