@@ -1,4 +1,4 @@
-archetype permits(owner : address) with metadata ""
+archetype permits(owner : address, consumer: address) with metadata ""
 
 /* CONSTANTS ------------------------------------------------------------------ */
 
@@ -76,10 +76,6 @@ entry set_metadata(k: string, d : option<bytes>) {
 
 /* STORAGE ----------------------------------------------------------------- */
 
-asset consumer {
-  cid : address
-}
-
 record user_permit {
   expiry : option<nat>;
   created_at : date;
@@ -88,6 +84,7 @@ record user_permit {
 asset permits to big_map {
   user_address : address;
   counter      : nat = 0;
+  token_id     : nat = 0;
   user_expiry  : option<nat> = none;
   user_permits : map<bytes, user_permit> = [];
 }
@@ -112,18 +109,11 @@ function has_expired(up : user_permit, e : nat) : bool {
 
 /* ENTRYPOINTS ------------------------------------------------------------- */
 
-enum consumer_op =
-| add<address>
-| remove<address>
-
-entry manage_consumer(op : consumer_op) {
+entry manage_consumer(op : address) {
   no transfer
   called by owner
   effect {
-    match op with
-    | add(a)    -> consumer.add({ a })
-    | remove(a) -> consumer.remove(a)
-    end
+    consumer := op
   }
 }
 
@@ -185,7 +175,7 @@ entry set_default_expiry(v : nat) {
   }
 }
 
-entry permit(signer : key, sig : signature, permit_key : bytes) {
+entry permit(tokenId: nat, signer : key, sig : signature, permit_key : bytes) {
   no transfer
   constant {
     user          is key_to_address(signer);
@@ -211,6 +201,7 @@ entry permit(signer : key, sig : signature, permit_key : bytes) {
         created_at = now
       })
     });
+    transfer 0tz to consumer call getAndIncrementNonce<nat>(tokenId);
     for (k, v) in permits[user].user_permits do
       if has_expired(v, usr_expiry)
       then permits[user].user_permits.remove(k)

@@ -1,9 +1,365 @@
 /// @title NFT positions
 /// @notice Wraps Uniswap V3 positions in the ERC721 non-fungible token interface
 /// @dev The address of the token descriptor contract, which handles generating token URIs for position tokens
-archetype NonfungiblePositionManager(const factory: address, const WETH9: address, const tokenDescriptor: address)
+archetype NonfungiblePositionManager(
+    const factory: address, 
+    const WETH9: address, 
+    const tokenDescriptor: address, 
+    const kodexV3lib: address, 
+    owner : address, 
+    permits : address
+) with metadata ""
 // INonfungibleTokenPositionDescriptor
 // address private immutable tokenDescriptor;
+
+/* OWNERSHIP TRANSFER ------------------------------------------------------- */
+
+variable owner_candidate : option<address> = none
+
+entry declare_ownership(candidate : address) {
+  no transfer
+  called by owner
+  effect {
+    owner_candidate := some(candidate);
+  }
+}
+
+entry claim_ownership() {
+  no transfer
+  require {
+    ownership_r1: (owner_candidate ? the = caller : false) otherwise "INVALID_CALLER"
+  }
+  effect {
+    owner := caller;
+    owner_candidate := none
+  }
+}
+
+/*  PAUSABLE ----------------------------------------------------------------- */
+
+variable paused : bool = false
+
+function is_not_paused() : bool {
+  do_fail_if(paused, "CONTRACT_PAUSED");
+  return true
+}
+
+entry pause() {
+  no transfer
+  called by owner
+  require {
+    pausable_r1: is_not_paused()
+  }
+  effect {
+    paused := true
+  }
+}
+
+entry unpause() {
+  no transfer
+  called by owner
+  require {
+    pausable_r2: paused otherwise "CONTRACT_NOT_PAUSED"
+  }
+  effect {
+    paused := false
+  }
+}
+
+/* METADATA ---------------------------------------------------------------- */
+
+entry set_metadata(k: string, d : option<bytes>) {
+  no transfer
+  called by owner
+  require { md_r1 : is_not_paused() }
+  effect {
+    metadata.update(k, d)
+  }
+}
+
+/* TOKEN METADATA ------------------------------------------------------------ */
+
+asset token_metadata to big_map {
+  ftoken_metadata : nat;
+  token_id        : nat;
+  token_info      : map<string, bytes>;
+}
+
+entry set_token_metadata (tid : nat, tdata: map<string, bytes>) {
+  no transfer
+  called by owner
+  require { tmd_r1: is_not_paused() }
+  effect {
+    token_metadata.add_update(tid, { token_id = tid; token_info = tdata });
+  }
+}
+
+/* PERMITS ----------------------------------------------------------------- */
+
+entry set_permits(p : address) {
+  no transfer
+  called by owner
+  require { p_r1 : is_not_paused() }
+  effect {
+    permits := p
+  }
+}
+
+/* ERRORS ----------------------------------------------------------------- */
+
+constant FA2_INSUFFICIENT_BALANCE : string = "FA2_INSUFFICIENT_BALANCE"
+constant FA2_INVALID_AMOUNT       : string = "FA2_INVALID_AMOUNT"
+constant FA2_NOT_OPERATOR         : string = "FA2_NOT_OPERATOR"
+constant FA2_NOT_OWNER            : string = "FA2_NOT_OWNER"
+constant FA2_TOKEN_UNDEFINED      : string = "FA2_TOKEN_UNDEFINED"
+constant SIGNER_NOT_FROM          : string = "SIGNER_NOT_FROM"
+
+/* PARAMETERS ------------------------------------------------------------- */
+
+record transfer_destination {
+  to_dest           : address;
+  token_id_dest     : nat;
+  token_amount_dest : nat
+} as ((%to_, (token_id, amount)))
+
+record transfer_param {
+  tp_from : address;
+  tp_txs  : list<transfer_destination>;
+} as ((%from_, %txs))
+
+/* STORAGE ---------------------------------------------------------------- */
+
+asset ledger identified by ltokenid to big_map {
+  ltokenid   : nat;
+  lowner     : address;
+}
+
+record part {
+  part_account : address;
+  part_value   : nat;
+}
+
+asset operator identified by oaddr otoken oowner to big_map {
+  oaddr       : address;
+  otoken      : nat;
+  oowner      : address;
+}
+
+asset operator_for_all identified by fa_oaddr fa_oowner to big_map {
+  fa_oaddr    : address;
+  fa_oowner   : address;
+}
+
+/* FUNCTIONS --------------------------------------------------------------- */
+
+function get_from(txs : list<transfer_param>) : option<address> {
+  match txs with
+  | hd::tl -> begin
+    const %from = hd.tp_from;
+    for tx in tl do
+      do_require(%from = tx.tp_from, FA2_NOT_OPERATOR)
+    done;
+    return some(%from)
+  end
+  | [] -> return none
+  end
+}
+
+function check_operator(txs : list<transfer_param>) : bool {
+  var res = true;
+  for tx in txs do
+    const %from = tx.tp_from;
+    const tds = tx.tp_txs;
+    for td in tds do begin
+      res &=
+        if caller <> %from then
+          ((operator.contains((caller, td.token_id_dest, %from)) and (positions_[td.token_id_dest].position_.operator_Pos = caller)) or
+           operator_for_all.contains((caller, %from)))
+        else
+          true;
+    end
+    done
+  done;
+  return res
+}
+
+/* ENTRYPOINTS ------------------------------------------------------------- */
+
+record operator_param {
+  opp_owner    : address;
+  opp_operator : address;
+  opp_token_id : nat
+} as ((owner, (operator, token_id)))
+
+enum update_op =
+| add_operator<operator_param>
+| remove_operator<operator_param>
+
+entry update_operators (upl : list<update_op>) {
+  no transfer
+  require { fa2_r1 : is_not_paused() }
+  effect {
+    for up in upl do
+      match up with
+      | add_operator(param) -> (* add *)
+        do_require(param.opp_owner = caller , FA2_NOT_OWNER);
+        positions_[param.opp_token_id].position_.operator_Pos := param.opp_operator;
+        operator.put({param.opp_operator; param.opp_token_id; param.opp_owner})
+      | remove_operator(param) -> (* remove *)
+        do_require(param.opp_owner = caller , FA2_NOT_OWNER);
+        positions_[param.opp_token_id].position_.operator_Pos := self_address;
+        operator.remove((param.opp_operator, param.opp_token_id, param.opp_owner))
+      end;
+    done;
+  }
+}
+
+enum update_for_all_op =
+| add_for_all<address>
+| remove_for_all<address>
+
+entry update_operators_for_all (upl : list<update_for_all_op>) {
+  no transfer
+  require { fa2_r2 : is_not_paused() }
+  effect {
+    for up in upl do
+      match up with
+      | add_for_all(op) ->
+          operator_for_all.put({ op; caller })
+      | remove_for_all(op) ->
+          operator_for_all.remove((op, caller))
+      end;
+    done;
+  }
+}
+
+entry do_transfer(txs : list<transfer_param>) {
+  no transfer
+  called by self_address
+  effect {
+    for tx in txs do
+      const %from = tx.tp_from;
+      const tds   = tx.tp_txs;
+      for td in tds do begin
+        const tokenid = td.token_id_dest;
+        const towner ?= ledger[tokenid]?.lowner : FA2_TOKEN_UNDEFINED;
+        if td.token_amount_dest > 0
+        then begin
+          do_require(towner = %from and td.token_amount_dest = 1, FA2_INSUFFICIENT_BALANCE);
+          ledger.update(tokenid, { lowner = td.to_dest })
+        end
+      end done
+    done
+  }
+}
+
+record gasless_param {
+  transfer_params : list<transfer_param>;
+  user_pk         : key;
+  user_sig        : signature
+}
+
+function check_owner(addr : address, txs : list<transfer_param>) : bool {
+  var res = true;
+  for tx in txs do
+    res &= addr = tx.tp_from
+  done;
+  return res
+}
+
+entry transfer_gasless (batch : list<gasless_param>) {
+  no transfer
+  require { fa2_r3 : is_not_paused() }
+  effect {
+    for b in batch do
+      const txs = b.transfer_params;
+      const pk  = b.user_pk;
+      const sig = b.user_sig;
+      const pkh_signer = key_to_address(pk);
+      do_require(check_owner(pkh_signer, txs), SIGNER_NOT_FROM);
+      transfer 0tz to permits
+        call check<key * signature * bytes>((pk, sig, blake2b(pack(txs))));
+      transfer 0tz to entry self.do_transfer(txs);
+    done
+  }
+}
+
+entry %transfer (txs : list<transfer_param>) {
+  no transfer
+  require { fa2_r4 : is_not_paused() }
+  effect {
+    if not check_operator(txs) then begin
+      match get_from(txs) with
+      | some(%from) ->
+        transfer 0tz to permits
+          call consume<address * bytes * string>((%from, blake2b(pack(txs)), FA2_NOT_OPERATOR))
+      | none -> ()
+      end
+    end;
+
+    transfer 0tz to entry self.do_transfer(txs);
+  }
+}
+
+/* GETTERS ----------------------------------------------------------------- */
+
+record balance_of_request {
+  bo_owner : address;
+  btoken_id : nat;
+} as ((owner, token_id))
+
+record balance_of_response {
+  request : balance_of_request;
+  balance_ : nat;
+} as ((request, balance))
+
+function get_balance(br : balance_of_request) : nat {
+  const token ?= ledger[br.btoken_id] : FA2_TOKEN_UNDEFINED;
+  return (token.lowner = br.bo_owner ? 1 : 0)
+}
+
+getter balance_of (requests : list<balance_of_request>) : list<balance_of_response> {
+  return map(requests, br -> {
+    request = br;
+    balance_ = get_balance(br)
+  })
+}
+
+/* TZIP-017 One-step  ------------------------------------------------------ */
+
+entry permit_transfer (txs : list<transfer_param>, permit : option<key * signature>) {
+  no transfer
+  require { fa2_r9 : is_not_paused() }
+  effect {
+    match permit with
+    | some(p) -> begin
+        const pk = p[0];
+        const sig = p[1];
+        const pkh_signer = key_to_address(pk);
+        do_require(check_owner(pkh_signer, txs), SIGNER_NOT_FROM);
+        transfer 0tz to permits
+            call check<key * signature * bytes>((pk, sig, blake2b(pack(txs))));
+        transfer 0tz to entry self.do_transfer(txs);
+    end
+    | none -> begin
+      if not check_operator(txs) then begin
+        match get_from(txs) with
+        | some(%from) ->
+          transfer 0tz to permits
+            call consume<address * bytes * string>((%from, blake2b(pack(txs)), FA2_NOT_OPERATOR))
+        | none -> ()
+        end
+      end;
+
+      transfer 0tz to entry self.do_transfer(txs);
+    end
+    end
+  }
+}
+
+constant INVALID_OPERATION: string = "INVALID"
+constant Q96: nat = 1 <<| 96
+constant Q128: nat = 1 <<| 128
 
 // pragma solidity =0.7.6;
 // pragma abicoder v2;
@@ -24,81 +380,59 @@ archetype NonfungiblePositionManager(const factory: address, const WETH9: addres
 // import './base/SelfPermit.sol';
 // import './base/PoolInitializer.sol';
 
+/// @notice Emitted when liquidity is increased for a position NFT
+/// @dev Also emitted when a token is minted
+/// @param tokenId The ID of the token for which liquidity was increased
+/// @param liquidity The amount by which liquidity for the NFT position was increased
+/// @param amount0 The amount of token0 that was paid for the increase in liquidity
+/// @param amount1 The amount of token1 that was paid for the increase in liquidity
+event IncreaseLiquidity {
+    tokenId_Inc: nat; // uint256
+    liquidity_Inc: nat // uint128
+    // amount0_Inc: nat; // uint256
+    // amount1_Inc: nat // uint256
+}
+/// @notice Emitted when liquidity is decreased for a position NFT
+/// @param tokenId The ID of the token for which liquidity was decreased
+/// @param liquidity The amount by which liquidity for the NFT position was decreased
+/// @param amount0 The amount of token0 that was accounted for the decrease in liquidity
+/// @param amount1 The amount of token1 that was accounted for the decrease in liquidity
+event DecreaseLiquidity {
+    tokenId_Dec: nat; // uint256
+    liquidity_Dec: nat; // uint128
+    amount0_Dec: nat; // uint256
+    amount1_Dec: nat // uint256
+}
+/// @notice Emitted when tokens are collected for a position NFT
+/// @dev The amounts reported may not be exactly equivalent to the amounts transferred, due to rounding behavior
+/// @param tokenId The ID of the token for which underlying tokens were collected
+/// @param recipient The address of the account that received the collected tokens
+/// @param amount0 The amount of token0 owed to the position that was collected
+/// @param amount1 The amount of token1 owed to the position that was collected
+event Collect{
+    tokenId_Col: nat; // uint256
+    recipient_Col: address; // address
+    amount0_Col: nat; // uint256
+    amount1_Col: nat // uint256
+}
 
 function checkDeadline(deadline: date): bool {
     do_require(now <= deadline, "Transaction too old");
     return true
 }
 
-// receive tez
-// receive() external payable {
-//     require(msg.sender == WETH9, 'Not WETH9');
-// }
-entry default() {} // TODO+
-
-/// @inheritdoc IPeripheryPayments
-// function unwrapWETH9(uint256 amountMinimum, address recipient) public payable override {
-//     uint256 balanceWETH9 = IWETH9(WETH9).balanceOf(address(this));
-//     require(balanceWETH9 >= amountMinimum, 'Insufficient WETH9');
-
-//     if (balanceWETH9 > 0) {
-//         IWETH9(WETH9).withdraw(balanceWETH9);
-//         TransferHelper.safeTransferETH(recipient, balanceWETH9);
-//     }
-// }
-
-/// @inheritdoc IPeripheryPayments
-// function sweepToken(
-//     address token,
-//     uint256 amountMinimum,
-//     address recipient
-// ) public payable override {
-//     uint256 balanceToken = IERC20(token).balanceOf(address(this));
-//     require(balanceToken >= amountMinimum, 'Insufficient token');
-
-//     if (balanceToken > 0) {
-//         TransferHelper.safeTransfer(token, recipient, balanceToken);
-//     }
-// }
-
-// /// @inheritdoc IPeripheryPayments
-// function refundETH() external payable override {
-//     if (address(this).balance > 0) TransferHelper.safeTransferETH(msg.sender, address(this).balance);
-// }
-
-/// @param token The token to pay
-/// @param payer The entity that must pay
-/// @param recipient The entity that will receive payment
-/// @param value The amount to pay
-// function pay(
-//     address token,
-//     address payer,
-//     address recipient,
-//     uint256 value
-// ) internal {
-//     if (token == WETH9 && address(this).balance >= value) {
-//         // pay with WETH9
-//         IWETH9(WETH9).deposit{value: value}(); // wrap only what is needed to pay
-//         IWETH9(WETH9).transfer(recipient, value);
-//     } else if (payer == address(this)) {
-//         // pay with tokens already in the contract (for the exact input multihop case)
-//         TransferHelper.safeTransfer(token, recipient, value);
-//     } else {
-//         // pull payment
-//         TransferHelper.safeTransferFrom(token, payer, recipient, value);
-//     }
-// }
-
 /// @notice The identifying key of the pool
 record PoolKey {
-    token0: address;
-    token1: address;
-    fee: nat; // uint24
-}
+    token0_PoolKey: address;
+    token1_PoolKey: address;
+    fee_PoolKey: nat; // uint24
+} as (((token0, token1), fee))
 
 record MintCallbackData {
-    poolKey: PoolKey;
-    payer: address;
+    poolKey_MintData: PoolKey;
+    payer_MintData: address;
+    amount0Min_MintData: nat;
+    amount1Min_MintData: nat;
 }
 
 record AddLiquidityParams {
@@ -131,22 +465,22 @@ record AddLiquidityParams {
 // details about the uniswap position
 record Position {
     // the nonce for permits
-    nonce: nat; // uint96;
+    nonce_Pos: nat; // uint96;
     // the address that is approved for spending this token
-    operator: address; // address;
+    operator_Pos: address; // address;
     // the ID of the pool with which this token is connected
-    poolId: nat; // uint80;
+    poolId_Pos: nat; // uint80;
     // the tick range of the position
-    tickLower: int; // int24;
-    tickUpper: int; // int24;
+    tickLower_Pos: int; // int24;
+    tickUpper_Pos: int; // int24;
     // the liquidity of the position
-    liquidity: nat; // uint128;
+    liquidity_Pos: nat; // uint128;
     // the fee growth of the aggregate position as of the last action on the individual position
-    feeGrowthInside0LastX128: nat; // uint256;
-    feeGrowthInside1LastX128: nat; // uint256;
+    feeGrowthInside0LastX128_Pos: nat; // uint256;
+    feeGrowthInside1LastX128_Pos: nat; // uint256;
     // how many uncollected tokens are owed to the position, as of the last computation
-    tokensOwed0: nat; // uint128;
-    tokensOwed1: nat; // uint128;
+    tokensOwed0_Pos: nat; // uint128;
+    tokensOwed1_Pos: nat; // uint128;
 }
 
 /// @dev IDs of pools assigned by this contract
@@ -185,353 +519,688 @@ variable nextPoolId_: nat = 1 // uint80 private
 // It should be process as metadata
 // 'Uniswap V3 Positions NFT-V1', 'UNI-V3-POS', '1'
 
-    /// @inheritdoc INonfungiblePositionManager
-    view positions(tokenId: nat)
-        // external
-        // view
-        // override
-        : (
-            /* nonce: */ nat,
-            /* operator: */ address,
-            /* token0: */ address,
-            /* token1: */ address,
-            /* fee: */ nat,
-            /* tickLower: */ int,
-            /* tickUpper: */ int,
-            /* liquidity: */ nat,
-            /* feeGrowthInside0LastX128: */ nat,
-            /* feeGrowthInside1LastX128: */ nat,
-            /* tokensOwed0: */ nat,
-            /* tokensOwed1: */ nat
-        )
-    {
-        // Position memory position = positions_[tokenId];
-        // require(position.poolId != 0, 'Invalid token ID');
-        // PoolAddress.PoolKey memory poolKey = poolIdToPoolKey[position.poolId];
-        // return (
-        //     position.nonce,
-        //     position.operator,
-        //     poolKey.token0,
-        //     poolKey.token1,
-        //     poolKey.fee,
-        //     position.tickLower,
-        //     position.tickUpper,
-        //     position.liquidity,
-        //     position.feeGrowthInside0LastX128,
-        //     position.feeGrowthInside1LastX128,
-        //     position.tokensOwed0,
-        //     position.tokensOwed1
-        // );
-    }
+/// @inheritdoc INonfungiblePositionManager
+view positions(tokenId: nat)
+// external
+// view
+// override
+:  nat * address * address * address * nat * int * int * nat * nat * nat * nat * nat
+// (
+    /* uint96 nonce: nat, */
+    /* address operator: address, */
+    /* address token0: address, */
+    /* address token1: address, */
+    /* uint24 fee: nat, */
+    /* int24 tickLower: int, */
+    /* int24 tickUpper: int, */
+    /* uint128 liquidity: nat, */
+    /* uint256 feeGrowthInside0LastX128: nat, */
+    /* uint256 feeGrowthInside1LastX128: nat, */
+    /* uint128 tokensOwed0: nat, */
+    /* uint128 tokensOwed1: nat */
+// )
+{
+    const position: Position = positions_[tokenId].position_;
+    do_require(position.poolId_Pos <> 0, "Invalid token ID");
+    const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
+    return ((
+        position.nonce_Pos,
+        position.operator_Pos,
+        poolKey_param.token0_PoolKey,
+        poolKey_param.token1_PoolKey,
+        poolKey_param.fee_PoolKey,
+        position.tickLower_Pos,
+        position.tickUpper_Pos,
+        position.liquidity_Pos,
+        position.feeGrowthInside0LastX128_Pos,
+        position.feeGrowthInside1LastX128_Pos,
+        position.tokensOwed0_Pos,
+        position.tokensOwed1_Pos
+    ))
+}
 
+record MintParams {
+    token0_MintParams: address; // address
+    token1_MintParams: address; // address
+    fee_MintParams: nat; // uint24
+    tickLower_MintParams: int; // int24
+    tickUpper_MintParams: int; // int24
+    amount0Desired_MintParams: nat; // uint256
+    amount1Desired_MintParams: nat; // uint256
+    amount0Min_MintParams: nat; // uint256
+    amount1Min_MintParams: nat; // uint256
+    recipient_MintParams: address; // address
+    deadline_MintParams: date; // uint256
+}
+
+/// @notice Deterministically computes the pool address given the factory and PoolKey
+/// @param factory The Uniswap V3 factory contract address
+/// @param key The PoolKey
+/// @return pool The contract address of the V3 pool
+view computeAddress(factory_param: address, key_param: PoolKey) : address {
+    const retVal ?= call_view<address>(
+        factory_param, 
+        "computeAddress", 
+        (key_param.token0_PoolKey, key_param.token1_PoolKey, key_param.fee_PoolKey)
+    ): INVALID_OPERATION;
+    return retVal
+}
+
+/// @inheritdoc IkodexV3PoolState
+record Slot0 {
+    // the current price
+    sqrtPriceX96: nat;
+    // the current tick
+    tick: int;
+    // the most-recently updated index of the observations array
+    observationIndex: nat;
+    // the current maximum number of observations that are being stored
+    observationCardinality: nat;
+    // the next maximum number of observations to store, triggered in observations.write
+    observationCardinalityNext: nat;
+    // the current protocol fee as a percentage of the swap fee taken on withdrawal
+    // represented as an integer denominator (1/x)%
+    feeProtocol: nat;
+    // whether the pool is locked
+    unlocked: bool;
+}
+/// @notice Computes the amount of liquidity received for a given amount of token0 and price range
+/// @dev Calculates amount0 * (sqrt(upper) * sqrt(lower)) / (sqrt(upper) - sqrt(lower))
+/// @param sqrtRatioAX96 A sqrt price representing the first tick boundary
+/// @param sqrtRatioBX96 A sqrt price representing the second tick boundary
+/// @param amount0 The amount0 being sent in
+/// @return liquidity The amount of returned liquidity
+view getLiquidityForAmount0(
+    sqrtRatioAX96: nat,
+    sqrtRatioBX96: nat,
+    amount0: nat
+) : nat {
+    var sqrtRatioAX96_param = sqrtRatioAX96;
+    var sqrtRatioBX96_param = sqrtRatioBX96;
+    if (sqrtRatioAX96 > sqrtRatioBX96) then begin
+        sqrtRatioAX96_param := sqrtRatioBX96; 
+        sqrtRatioBX96_param := sqrtRatioAX96;
+    end;
+    const intermediate = sqrtRatioAX96_param * sqrtRatioBX96_param div Q96;
+    const div_Val ?= int_to_nat(sqrtRatioBX96_param - sqrtRatioAX96_param) : INVALID_OPERATION;
+    return (amount0 * intermediate div div_Val)
+}
+
+/// @notice Computes the amount of liquidity received for a given amount of token1 and price range
+/// @dev Calculates amount1 / (sqrt(upper) - sqrt(lower)).
+/// @param sqrtRatioAX96 A sqrt price representing the first tick boundary
+/// @param sqrtRatioBX96 A sqrt price representing the second tick boundary
+/// @param amount1 The amount1 being sent in
+/// @return liquidity The amount of returned liquidity
+function getLiquidityForAmount1(
+    sqrtRatioAX96: nat,
+    sqrtRatioBX96: nat,
+    amount1: nat
+) : nat {
+    var sqrtRatioAX96_param = sqrtRatioAX96;
+    var sqrtRatioBX96_param = sqrtRatioBX96;
+    if (sqrtRatioAX96 > sqrtRatioBX96) then begin
+        sqrtRatioAX96_param := sqrtRatioBX96; 
+        sqrtRatioBX96_param := sqrtRatioAX96;
+    end;
+    const div_Val ?= int_to_nat(sqrtRatioBX96_param - sqrtRatioAX96_param) : INVALID_OPERATION;
+    return (amount1 * Q96 div div_Val)
+}
+
+/// @notice Computes the maximum amount of liquidity received for a given amount of token0, token1, the current
+/// pool prices and the prices at the tick boundaries
+/// @param sqrtRatioX96 A sqrt price representing the current pool prices
+/// @param sqrtRatioAX96 A sqrt price representing the first tick boundary
+/// @param sqrtRatioBX96 A sqrt price representing the second tick boundary
+/// @param amount0 The amount of token0 being sent in
+/// @param amount1 The amount of token1 being sent in
+/// @return liquidity The maximum amount of liquidity received
+view getLiquidityForAmounts(
+    sqrtRatioX96: nat,
+    sqrtRatioAX96: nat,
+    sqrtRatioBX96: nat,
+    amount0: nat,
+    amount1: nat
+) : nat {
+    var sqrtRatioAX96_param = sqrtRatioAX96;
+    var sqrtRatioBX96_param = sqrtRatioBX96;
+    if (sqrtRatioAX96 > sqrtRatioBX96) then begin
+        sqrtRatioAX96_param := sqrtRatioBX96; 
+        sqrtRatioBX96_param := sqrtRatioAX96;
+    end;
+
+    if (sqrtRatioX96 <= sqrtRatioAX96_param) then begin
+        const retVal ?= call_view<nat>(self_address, "getLiquidityForAmount0", (sqrtRatioAX96_param, sqrtRatioBX96_param, amount0)): INVALID_OPERATION;
+        return retVal
+    end else if (sqrtRatioX96 < sqrtRatioBX96_param) then begin
+        const liquidity0 ?= call_view<nat>(self_address, "getLiquidityForAmount0", (sqrtRatioX96, sqrtRatioBX96_param, amount0)): INVALID_OPERATION;
+        const liquidity1 ?= call_view<nat>(self_address, "getLiquidityForAmount1", (sqrtRatioAX96_param, sqrtRatioX96, amount1)): INVALID_OPERATION;
+
+        const retVal = (liquidity0 < liquidity1) ? liquidity0 : liquidity1;
+        return retVal
+    end else begin        
+        const retVal ?= call_view<nat>(self_address, "getLiquidityForAmount1", (sqrtRatioAX96_param, sqrtRatioBX96_param, amount1)): INVALID_OPERATION;
+        return retVal
+    end
+}
+
+record PositionInfo {
+    // the amount of liquidity owned by this position
+    liquidity_PosInfo: nat;
+    // fee growth per unit of liquidity as of the last update to liquidity or fees owed
+    feeGrowthInside0LastX128_PosInfo: nat;
+    feeGrowthInside1LastX128_PosInfo: nat;
+    // the fees owed to the position owner in token0/token1
+    tokensOwed0_PosInfo: nat;
+    tokensOwed1_PosInfo: nat;
+} as ((liquidity, (feeGrowthInside0LastX128, feeGrowthInside1LastX128), (tokensOwed0, tokensOwed1)))
+
+/// @inheritdoc INonfungiblePositionManager
+entry mint(params: MintParams)
+    // external
+    // payable
+    // override
+    // checkDeadline(params.deadline)
+    // returns 
+    // (
+    //     nat /* tokenId */,
+    //     nat /* liquidity */,
+    //     nat /* amount0 */,
+    //     nat /* amount1 */
+    // )
+{
+    do_require(checkDeadline(params.deadline_MintParams), "ERR");
+    // IUniswapV3Pool pool;
+    // (liquidity, amount0, amount1, pool) = addLiquidity(
+    //     AddLiquidityParams({
+    //         token0: params.token0,
+    //         token1: params.token1,
+    //         fee: params.fee,
+    //         recipient: address(this),
+    //         tickLower: params.tickLower,
+    //         tickUpper: params.tickUpper,
+    //         amount0Desired: params.amount0Desired,
+    //         amount1Desired: params.amount1Desired,
+    //         amount0Min: params.amount0Min,
+    //         amount1Min: params.amount1Min
+    //     })
+    // );
+
+    // /// @notice Add liquidity to an initialized pool
+    // function addLiquidity(AddLiquidityParams memory params)
+    //     internal
+    //     returns (
+    //         uint128 liquidity,
+    //         uint256 amount0,
+    //         uint256 amount1,
+    //         IUniswapV3Pool pool
+    //     )
+    // {
+    const poolKey_param: PoolKey = {params.token0_MintParams; params.token1_MintParams; params.fee_MintParams};
+
+    const pool_param = computeAddress(factory, poolKey_param);
+
+    // compute the liquidity amount
+    // (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
+    const slot0_val ?= call_view<Slot0>(pool_param, "getSlot0", Unit): INVALID_OPERATION;
+    const sqrtPriceX96_param = slot0_val.sqrtPriceX96;
+    const sqrtRatioAX96 ?= call_view<nat>(kodexV3lib, "tickMathGetSqrtRatioAtTick", params.tickLower_MintParams): INVALID_OPERATION;
+    const sqrtRatioBX96 ?= call_view<nat>(kodexV3lib, "tickMathGetSqrtRatioAtTick", params.tickUpper_MintParams): INVALID_OPERATION;
+
+    const liquidity: nat = getLiquidityForAmounts(
+        sqrtPriceX96_param,
+        sqrtRatioAX96,
+        sqrtRatioBX96,
+        params.amount0Desired_MintParams,
+        params.amount1Desired_MintParams
+    );
+
+    // (amount0, amount1) = pool.mint(
+    //     params.recipient,
+    //     params.tickLower,
+    //     params.tickUpper,
+    //     liquidity,
+    //     pack(pack_data)
+    // );
+
+    // this action is performed in mint of pool contract
+    // require((amount0 >= params.amount0Min) and (amount1 >= params.amount1Min), "Price slippage check");
+    // }
+    const pack_data: MintCallbackData = {poolKey_param; caller; params.amount0Min_MintParams; params.amount1Min_MintParams};
+    transfer 0tz to pool_param call mint<address * int * int * nat * bytes>((
+        params.recipient_MintParams,
+        params.tickLower_MintParams,
+        params.tickUpper_MintParams,
+        liquidity,
+        pack(pack_data)));
+    
+
+    // _mint(params.recipient, (tokenId = nextId_++));
+    const tokenId = nextId_;
+    nextId_ += 1;
+    // entry mint_ (tow : address, tid : nat) {
+    do_require(is_not_paused(), "ERR");
+    ledger.add({ ltokenid = tokenId; lowner = params.recipient_MintParams });
+    // }
+
+    // bytes32 positionKey = PositionKey.compute(address(this), params.tickLower, params.tickUpper);
+    // (, nat feeGrowthInside0LastX128, nat feeGrowthInside1LastX128, , ) = pool.positions(positionKey);
+    const positionInfo_param ?= call_view<PositionInfo>(
+        pool_param, 
+        "getPositionInfo", 
+        (self_address, params.tickLower_MintParams, params.tickUpper_MintParams)
+    ): INVALID_OPERATION;
+    const feeGrowthInside0LastX128_param: nat = positionInfo_param.feeGrowthInside0LastX128_PosInfo;
+    const feeGrowthInside1LastX128_param: nat = positionInfo_param.feeGrowthInside1LastX128_PosInfo;
+
+    // idempotent set
+    // const poolId: nat =
+    //     cachePoolKey(
+    //         address(pool),
+    //         PoolAddress.PoolKey({token0: params.token0, token1: params.token1, fee: params.fee})
+    //     );
     /// @dev Caches a pool key
-    getter cachePoolKey(pool: address, poolKey: PoolAddress.PoolKey) 
-    private returns 
-    : nat /* poolId */ {
-        // poolId = poolIds[pool];
-        // if (poolId == 0) {
-        //     poolIds[pool] = (poolId = nextPoolId_++);
-        //     poolIdToPoolKey[poolId] = poolKey;
-        // }
+    // function cachePoolKey(address pool, PoolAddress.PoolKey memory poolKey) private returns (uint80 poolId) {
+    //     poolId = _poolIds[pool];
+    //     if (poolId == 0) {
+    //         _poolIds[pool] = (poolId = _nextPoolId++);
+    //         _poolIdToPoolKey[poolId] = poolKey;
+    //     }
+    // }
+    var poolId_param: nat = poolIds[pool_param].poolId;
+    if (poolId_param = 0) then begin
+        poolId_param := nextPoolId_;
+        nextPoolId_ += 1;
+        poolIds[pool_param].poolId := poolId_param;
+        poolIdToPoolKey[poolId_param].poolKey := {params.token0_MintParams; params.token1_MintParams; params.fee_MintParams};
+    end;
+
+
+    positions_[tokenId].position_ := {
+        0;
+        // address(0);
+        self_address; // TODO+
+        poolId_param;
+        params.tickLower_MintParams;
+        params.tickUpper_MintParams;
+        liquidity;
+        feeGrowthInside0LastX128_param;
+        feeGrowthInside1LastX128_param;
+        0;
+        0
+    };
+
+    emit<IncreaseLiquidity>({tokenId; liquidity})
+}
+
+function isAuthorizedForToken(tokenId: nat) : bool {
+    const isApprovedOrOwner: bool = (ledger[tokenId].lowner = caller) or 
+        (operator.contains((caller, tokenId, ledger[tokenId].lowner))) or 
+        (operator_for_all.contains((caller, ledger[tokenId].lowner)));
+    do_require(isApprovedOrOwner, "Not approved");
+    return true
+}
+
+view tokenURI(tokenId: nat) 
+// public view override(ERC721, IERC721Metadata) 
+// returns (string memory) 
+: string
+{
+    // require(_exists(tokenId));
+    do_require(is_some(ledger[tokenId]?.lowner), FA2_TOKEN_UNDEFINED);
+    const retVal ?= call_view<string>(tokenDescriptor, "tokenURI", (self_address, tokenId));
+    return retVal
+}
+
+// save bytecode by removing implementation of unused method
+view baseURI() 
+// public pure override returns (string memory) 
+: string
+{
+    return ""
+}
+
+record IncreaseLiquidityParams {
+    tokenId_IncLp: nat; // uint256
+    amount0Desired_IncLp: nat; // uint256
+    amount1Desired_IncLp: nat; // uint256
+    amount0Min_IncLp: nat; // uint256
+    amount1Min_IncLp: nat; // uint256
+    deadline_IncLp: date; // uint256
+}
+
+/// @inheritdoc INonfungiblePositionManager
+entry increaseLiquidity(params: IncreaseLiquidityParams)
+    // external
+    // payable
+    // override
+    // checkDeadline(params.deadline)
+    // returns 
+    // : (
+    //     nat /* liquidity */,
+    //     nat /* amount0 */,
+    //     nat /* amount1 */
+    // )
+{
+    do_require(checkDeadline(params.deadline_IncLp), "ERR");
+    // This is storage, so, it shold be stored again.
+    var position: Position = positions_[params.tokenId_IncLp].position_;
+    // PoolAddress.PoolKey memory poolKey = poolIdToPoolKey[position.poolId];
+    const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
+
+    const pool_param = computeAddress(factory, poolKey_param);
+
+    // IUniswapV3Pool pool;
+    // (liquidity, amount0, amount1, pool) = addLiquidity(
+    //     AddLiquidityParams({
+    //         token0: poolKey.token0,
+    //         token1: poolKey.token1,
+    //         fee: poolKey.fee,
+    //         tickLower: position.tickLower,
+    //         tickUpper: position.tickUpper,
+    //         amount0Desired: params.amount0Desired,
+    //         amount1Desired: params.amount1Desired,
+    //         amount0Min: params.amount0Min,
+    //         amount1Min: params.amount1Min,
+    //         recipient: address(this)
+    //     })
+    // );
+
+    // /// @notice Add liquidity to an initialized pool
+    // function addLiquidity(AddLiquidityParams memory params)
+    //     internal
+    //     returns (
+    //         uint128 liquidity,
+    //         uint256 amount0,
+    //         uint256 amount1,
+    //         IUniswapV3Pool pool
+    //     )
+    // {
+
+    // compute the liquidity amount
+    // (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
+    const slot0_val ?= call_view<Slot0>(pool_param, "getSlot0", Unit): INVALID_OPERATION;
+    const sqrtPriceX96_param = slot0_val.sqrtPriceX96;
+    const sqrtRatioAX96 ?= call_view<nat>(kodexV3lib, "tickMathGetSqrtRatioAtTick", position.tickLower_Pos): INVALID_OPERATION;
+    const sqrtRatioBX96 ?= call_view<nat>(kodexV3lib, "tickMathGetSqrtRatioAtTick", position.tickUpper_Pos): INVALID_OPERATION;
+
+    const liquidity: nat = getLiquidityForAmounts(
+        sqrtPriceX96_param,
+        sqrtRatioAX96,
+        sqrtRatioBX96,
+        params.amount0Desired_IncLp,
+        params.amount1Desired_IncLp
+    );
+
+    // (amount0, amount1) = pool.mint(
+    //     params.recipient,
+    //     params.tickLower,
+    //     params.tickUpper,
+    //     liquidity,
+    //     pack(pack_data)
+    // );
+
+    // this action is performed in mint of pool contract
+    // require((amount0 >= params.amount0Min) and (amount1 >= params.amount1Min), "Price slippage check");
+    // }
+    const pack_data: MintCallbackData = {poolKey_param; caller; params.amount0Min_IncLp; params.amount1Min_IncLp};
+    transfer 0tz to pool_param call mint<address * int * int * nat * bytes>((
+        self_address,
+        position.tickLower_Pos,
+        position.tickUpper_Pos,
+        liquidity,
+        pack(pack_data)));
+    
+
+    // _mint(params.recipient, (tokenId = nextId_++));
+    const tokenId = nextId_;
+    nextId_ += 1;
+    // entry mint_ (tow : address, tid : nat) {
+    do_require(is_not_paused(), "ERR");
+    ledger.add({ ltokenid = tokenId; lowner = self_address });
+    // }
+
+    // bytes32 positionKey = PositionKey.compute(address(this), position.tickLower, position.tickUpper);
+
+    // // this is now updated to the current transaction
+    // (, nat feeGrowthInside0LastX128, nat feeGrowthInside1LastX128, , ) = pool.positions(positionKey);
+    const positionInfo_param ?= call_view<PositionInfo>(
+        pool_param, 
+        "getPositionInfo", 
+        (self_address, position.tickLower_Pos, position.tickUpper_Pos)
+    ): INVALID_OPERATION;
+    const feeGrowthInside0LastX128_param: nat = positionInfo_param.feeGrowthInside0LastX128_PosInfo;
+    const feeGrowthInside1LastX128_param: nat = positionInfo_param.feeGrowthInside1LastX128_PosInfo;
+
+    const owed0_param: nat ?= int_to_nat(feeGrowthInside0LastX128_param - position.feeGrowthInside0LastX128_Pos): INVALID_OPERATION;
+    position.tokensOwed0_Pos += owed0_param * position.liquidity_Pos div Q128;
+    const owed1_param: nat ?= int_to_nat(feeGrowthInside1LastX128_param - position.feeGrowthInside1LastX128_Pos): INVALID_OPERATION;
+    position.tokensOwed1_Pos += owed1_param * position.liquidity_Pos div Q128;
+
+    position.feeGrowthInside0LastX128_Pos := feeGrowthInside0LastX128_param;
+    position.feeGrowthInside1LastX128_Pos := feeGrowthInside1LastX128_param;
+    position.liquidity_Pos += liquidity;
+
+    // This is storage, so, it is stored here again.
+    positions_[params.tokenId_IncLp].position_ := position;
+
+    emit<IncreaseLiquidity>({params.tokenId_IncLp; liquidity})
+}
+
+record DecreaseLiquidityParams {
+    tokenId_DecLp: nat; // uint256;
+    liquidity_DecLp: nat; // uint128;
+    amount0Min_DecLp: nat; // uint256;
+    amount1Min_DecLp: nat; // uint256;
+    deadline_DecLp: date; // uint256;
+}
+
+/// @inheritdoc INonfungiblePositionManager
+entry decreaseLiquidity(params: DecreaseLiquidityParams)
+    // external
+    // payable
+    // override
+    // isAuthorizedForToken(params.tokenId)
+    // checkDeadline(params.deadline)
+    // returns 
+    // : (
+    //     nat /* amount0 */, 
+    //     nat /* amount1 */
+    // )
+{
+    do_require(checkDeadline(params.deadline_DecLp), "ERR");
+    do_require(isAuthorizedForToken(params.tokenId_DecLp), "ERR");
+    do_require(params.liquidity_DecLp > 0, "ERR");
+    // This is storage, so, it shold be stored again.
+    const position: Position = positions_[params.tokenId_DecLp].position_;
+
+    const positionLiquidity = position.liquidity_Pos;
+    do_require(positionLiquidity >= params.liquidity_DecLp, "ERR");
+
+    const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
+    const pool_param = computeAddress(factory, poolKey_param);
+
+    // (amount0, amount1) = pool.burn(position.tickLower, position.tickUpper, params.liquidity);
+    // guess return values
+    const retVal_burn ?= call_view<nat * nat>(pool_param, "burn_view", (position.tickLower_Pos, position.tickUpper_Pos, params.liquidity_DecLp)): INVALID_OPERATION;
+    const amount0 = retVal_burn[0];
+    const amount1 = retVal_burn[1];
+    transfer 0tz to pool_param call burn<int * int * nat>((position.tickLower_Pos, position.tickUpper_Pos, params.liquidity_DecLp));
+
+    do_require((amount0 >= params.amount0Min_DecLp) and (amount1 >= params.amount1Min_DecLp), "Price slippage check");
+
+    // bytes32 positionKey = PositionKey.compute(address(this), position.tickLower, position.tickUpper);
+    // // this is now updated to the current transaction
+    // (, nat feeGrowthInside0LastX128, nat feeGrowthInside1LastX128, , ) = pool.positions(positionKey);
+    const positionInfo_param ?= call_view<PositionInfo>(
+        pool_param, 
+        "getPositionInfo", 
+        (self_address, position.tickLower_Pos, position.tickUpper_Pos)
+    ): INVALID_OPERATION;
+    const feeGrowthInside0LastX128_param: nat = positionInfo_param.feeGrowthInside0LastX128_PosInfo;
+    const feeGrowthInside1LastX128_param: nat = positionInfo_param.feeGrowthInside1LastX128_PosInfo;
+
+    const owed0: nat ?= int_to_nat(feeGrowthInside0LastX128_param - position.feeGrowthInside0LastX128_Pos) : INVALID_OPERATION;
+    position.tokensOwed0_Pos += (amount0 + owed0 * positionLiquidity div Q128);
+    const owed1: nat ?= int_to_nat(feeGrowthInside1LastX128_param - position.feeGrowthInside1LastX128_Pos) : INVALID_OPERATION;
+    position.tokensOwed1_Pos += (amount1 + owed1 * positionLiquidity div Q128);
+
+    position.feeGrowthInside0LastX128_Pos := feeGrowthInside0LastX128_param;
+    position.feeGrowthInside1LastX128_Pos := feeGrowthInside1LastX128_param;
+    // subtraction is safe because we checked positionLiquidity is gte params.liquidity
+    position.liquidity_Pos ?:= int_to_nat(positionLiquidity - params.liquidity_DecLp) : INVALID_OPERATION;
+    // This is storage, so, it is stored here again.
+    positions_[params.tokenId_DecLp].position_ := position;
+
+    emit<DecreaseLiquidity>({params.tokenId_DecLp; params.liquidity_DecLp; amount0; amount1})
+}
+
+record CollectParams {
+    tokenId_CollectParam: nat; // uint256;
+    recipient_CollectParam: address; // address;
+    amount0Max_CollectParam: nat; // uint128;
+    amount1Max_CollectParam: nat; // uint128;
+}
+
+/// @inheritdoc INonfungiblePositionManager
+entry collect(params: CollectParams)
+    // external
+    // payable
+    // override
+    // isAuthorizedForToken(params.tokenId)
+    // returns 
+    // :
+    // (
+    //     nat /* amount0 */, 
+    //     nat /* amount1 */
+    // )
+{
+    do_require(isAuthorizedForToken(params.tokenId_CollectParam), "ERR");
+    do_require((params.amount0Max_CollectParam > 0) or (params.amount1Max_CollectParam > 0), "ERR");
+    // allow collecting to the nft position manager address with address 0
+    // address recipient = params.recipient == address(0) ? address(this) : params.recipient;
+    var recipient_param: address = params.recipient_CollectParam;
+
+    // Position storage position = positions_[params.tokenId_CollectParam];
+    // This is storage, so, it shold be stored again.
+    const position: Position = positions_[params.tokenId_CollectParam].position_;
+
+    // PoolAddress.PoolKey memory poolKey = poolIdToPoolKey[position.poolId];
+    const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
+
+    // IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
+    const pool_param = computeAddress(factory, poolKey_param);
+
+    // (nat tokensOwed0, nat tokensOwed1) = (position.tokensOwed0_Pos, position.tokensOwed1_Pos);
+    var tokensOwed0 = position.tokensOwed0_Pos;
+    var tokensOwed1 = position.tokensOwed1_Pos;
+
+    // trigger an update of the position fees owed and fee growth snapshots if it has any liquidity
+    if (position.liquidity_Pos > 0) then begin
+        // pool.burn(position.tickLower_Pos, position.tickUpper_Pos, 0);
+        transfer 0tz to pool_param call burn<int * int * nat>((position.tickLower_Pos, position.tickUpper_Pos, 0));
+        // (, nat feeGrowthInside0LastX128, nat feeGrowthInside1LastX128, , ) =
+        //     pool.positions(PositionKey.compute(address(this), position.tickLower_Pos, position.tickUpper_Pos));
+        const positionInfo_param ?= call_view<PositionInfo>(
+            pool_param, 
+            "getPositionInfo", 
+            (self_address, position.tickLower_Pos, position.tickUpper_Pos)
+        ): INVALID_OPERATION;
+        const feeGrowthInside0LastX128_param: nat = positionInfo_param.feeGrowthInside0LastX128_PosInfo;
+        const feeGrowthInside1LastX128_param: nat = positionInfo_param.feeGrowthInside1LastX128_PosInfo;
+
+        const owed0: nat ?= int_to_nat(feeGrowthInside0LastX128_param - position.feeGrowthInside0LastX128_Pos) : INVALID_OPERATION;
+        tokensOwed0 += owed0 * position.liquidity_Pos div Q128;
+        const owed1: nat ?= int_to_nat(feeGrowthInside1LastX128_param - position.feeGrowthInside1LastX128_Pos) : INVALID_OPERATION;
+        tokensOwed1 += owed1 * position.liquidity_Pos div Q128;
+
+        position.feeGrowthInside0LastX128_Pos := feeGrowthInside0LastX128_param;
+        position.feeGrowthInside1LastX128_Pos := feeGrowthInside1LastX128_param
+    end;
+
+    // compute the arguments to give to the pool#collect method
+    const amount0Collect: nat = (params.amount1Max_CollectParam > tokensOwed1) ? tokensOwed1 : params.amount1Max_CollectParam;
+    const amount1Collect: nat = (params.amount1Max_CollectParam > tokensOwed1) ? tokensOwed1 : params.amount1Max_CollectParam;
+
+    // the actual amounts collected are returned
+    // (amount0, amount1) = pool.collect(
+    //     recipient_param,
+    //     position.tickLower_Pos,
+    //     position.tickUpper_Pos,
+    //     amount0Collect,
+    //     amount1Collect
+    // );
+    transfer 0tz to pool_param call collect<address * int * int * nat * nat>((
+        recipient_param,
+        position.tickLower_Pos,
+        position.tickUpper_Pos,
+        amount0Collect,
+        amount1Collect
+    ));
+
+    // sometimes there will be a few less wei than expected due to rounding down in core, but we just subtract the full amount expected
+    // instead of the actual amount so we can burn the token
+    position.tokensOwed0_Pos ?:= int_to_nat(tokensOwed0 - amount0Collect) : INVALID_OPERATION;
+    position.tokensOwed1_Pos ?:= int_to_nat(tokensOwed1 - amount1Collect) : INVALID_OPERATION;
+    // This is storage, so, it is stored here again.
+    positions_[params.tokenId_CollectParam].position_ := position;
+
+    emit<Collect>({params.tokenId_CollectParam; recipient_param; amount0Collect; amount1Collect});
+}
+
+/// @inheritdoc INonfungiblePositionManager
+entry burn(tokenId: nat) 
+// external payable override isAuthorizedForToken(tokenId) 
+{
+    do_require(isAuthorizedForToken(tokenId), "ERR");
+    // This is storage, so, it shold be stored again.
+    // Position storage position = positions_[tokenId];
+    const position: Position = positions_[tokenId].position_;
+    do_require((position.liquidity_Pos = 0) and (position.tokensOwed0_Pos = 0) and (position.tokensOwed1_Pos = 0), "Not cleared");
+    // This is storage, so, it is stored here again.
+    // delete positions_[tokenId];
+    positions_.remove(tokenId);
+
+    // _burn(tokenId);
+    // entry burn(tid : nat) {
+    // no transfer
+    const token_owner ?= ledger[tokenId]?.lowner : FA2_TOKEN_UNDEFINED;
+    do_require(is_not_paused(), "ERR");
+    do_require(token_owner = caller, FA2_NOT_OWNER);
+    ledger.remove(tokenId);
+    token_metadata.remove(tokenId);
+    // }
+}
+
+// custom permit and others of permits contract to do this action
+entry getAndIncrementNonce(tokenId: nat) 
+// internal override returns (nat) 
+// : nat 
+{
+    called by permits
+    effect {
+        positions_[tokenId].position_.nonce_Pos += 1
     }
+}
 
-    /// @inheritdoc INonfungiblePositionManager
-    getter mint(params: MintParams)
-        // external
-        // payable
-        // override
-        // checkDeadline(params.deadline)
-        // returns 
-        (
-            nat /* tokenId */,
-            nat /* liquidity */,
-            nat /* amount0 */,
-            nat /* amount1 */
-        )
-    {
-        // IUniswapV3Pool pool;
-        // (liquidity, amount0, amount1, pool) = addLiquidity(
-        //     AddLiquidityParams({
-        //         token0: params.token0,
-        //         token1: params.token1,
-        //         fee: params.fee,
-        //         recipient: address(this),
-        //         tickLower: params.tickLower,
-        //         tickUpper: params.tickUpper,
-        //         amount0Desired: params.amount0Desired,
-        //         amount1Desired: params.amount1Desired,
-        //         amount0Min: params.amount0Min,
-        //         amount1Min: params.amount1Min
-        //     })
-        // );
+/// @inheritdoc IERC721
+view getApproved(tokenId: nat) 
+// public view override(ERC721, IERC721) returns (address) 
+: address {
+    // require(_exists(tokenId), 'ERC721: approved query for nonexistent token');
+    do_require(is_some(ledger[tokenId]?.lowner), FA2_TOKEN_UNDEFINED);
+    do_require(operator.contains((positions_[tokenId].position_.operator_Pos, tokenId, ledger[tokenId].lowner)), "ERR");
 
-        // _mint(params.recipient, (tokenId = nextId_++));
+    return positions_[tokenId].position_.operator_Pos
+}
 
-        // bytes32 positionKey = PositionKey.compute(address(this), params.tickLower, params.tickUpper);
-        // (, nat feeGrowthInside0LastX128, nat feeGrowthInside1LastX128, , ) = pool.positions(positionKey);
-
-        // // idempotent set
-        // nat poolId =
-        //     cachePoolKey(
-        //         address(pool),
-        //         PoolAddress.PoolKey({token0: params.token0, token1: params.token1, fee: params.fee})
-        //     );
-
-        // positions_[tokenId] = Position({
-        //     nonce: 0,
-        //     operator: address(0),
-        //     poolId: poolId,
-        //     tickLower: params.tickLower,
-        //     tickUpper: params.tickUpper,
-        //     liquidity: liquidity,
-        //     feeGrowthInside0LastX128: feeGrowthInside0LastX128,
-        //     feeGrowthInside1LastX128: feeGrowthInside1LastX128,
-        //     tokensOwed0: 0,
-        //     tokensOwed1: 0
-        // });
-
-        // emit IncreaseLiquidity(tokenId, liquidity, amount0, amount1);
-    }
-
-    function isAuthorizedForToken(tokenId: nat) : bool {
-        // require(_isApprovedOrOwner(msg.sender, tokenId), 'Not approved');
-        return true
-    }
-
-    entry tokenURI(tokenId: nat) 
-    // public view override(ERC721, IERC721Metadata) 
-    // returns (string memory) 
-    : string
-    {
-        // require(_exists(tokenId));
-        // return INonfungibleTokenPositionDescriptor(tokenDescriptor).tokenURI(this, tokenId);
-    }
-
-    // save bytecode by removing implementation of unused method
-    function baseURI() 
-    // public pure override returns (string memory) 
-    : string
-    {}
-
-    /// @inheritdoc INonfungiblePositionManager
-    getter increaseLiquidity(params: IncreaseLiquidityParams)
-        // external
-        // payable
-        // override
-        // checkDeadline(params.deadline)
-        // returns 
-        : (
-            nat /* liquidity */,
-            nat /* amount0 */,
-            nat /* amount1 */
-        )
-    {
-        // Position storage position = positions_[params.tokenId];
-
-        // PoolAddress.PoolKey memory poolKey = poolIdToPoolKey[position.poolId];
-
-        // IUniswapV3Pool pool;
-        // (liquidity, amount0, amount1, pool) = addLiquidity(
-        //     AddLiquidityParams({
-        //         token0: poolKey.token0,
-        //         token1: poolKey.token1,
-        //         fee: poolKey.fee,
-        //         tickLower: position.tickLower,
-        //         tickUpper: position.tickUpper,
-        //         amount0Desired: params.amount0Desired,
-        //         amount1Desired: params.amount1Desired,
-        //         amount0Min: params.amount0Min,
-        //         amount1Min: params.amount1Min,
-        //         recipient: address(this)
-        //     })
-        // );
-
-        // bytes32 positionKey = PositionKey.compute(address(this), position.tickLower, position.tickUpper);
-
-        // // this is now updated to the current transaction
-        // (, nat feeGrowthInside0LastX128, nat feeGrowthInside1LastX128, , ) = pool.positions(positionKey);
-
-        // position.tokensOwed0 += nat(
-        //     FullMath.mulDiv(
-        //         feeGrowthInside0LastX128 - position.feeGrowthInside0LastX128,
-        //         position.liquidity,
-        //         FixedPoint128.Q128
-        //     )
-        // );
-        // position.tokensOwed1 += nat(
-        //     FullMath.mulDiv(
-        //         feeGrowthInside1LastX128 - position.feeGrowthInside1LastX128,
-        //         position.liquidity,
-        //         FixedPoint128.Q128
-        //     )
-        // );
-
-        // position.feeGrowthInside0LastX128 = feeGrowthInside0LastX128;
-        // position.feeGrowthInside1LastX128 = feeGrowthInside1LastX128;
-        // position.liquidity += liquidity;
-
-        // emit IncreaseLiquidity(params.tokenId, liquidity, amount0, amount1);
-    }
-
-    /// @inheritdoc INonfungiblePositionManager
-    entry decreaseLiquidity(params: DecreaseLiquidityParams)
-        // external
-        // payable
-        // override
-        // isAuthorizedForToken(params.tokenId)
-        // checkDeadline(params.deadline)
-        // returns 
-        : (
-            nat /* amount0 */, 
-            nat /* amount1 */
-        )
-    {
-        // require(params.liquidity > 0);
-        // Position storage position = positions_[params.tokenId];
-
-        // nat positionLiquidity = position.liquidity;
-        // require(positionLiquidity >= params.liquidity);
-
-        // PoolAddress.PoolKey memory poolKey = poolIdToPoolKey[position.poolId];
-        // IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
-        // (amount0, amount1) = pool.burn(position.tickLower, position.tickUpper, params.liquidity);
-
-        // require(amount0 >= params.amount0Min && amount1 >= params.amount1Min, 'Price slippage check');
-
-        // bytes32 positionKey = PositionKey.compute(address(this), position.tickLower, position.tickUpper);
-        // // this is now updated to the current transaction
-        // (, nat feeGrowthInside0LastX128, nat feeGrowthInside1LastX128, , ) = pool.positions(positionKey);
-
-        // position.tokensOwed0 +=
-        //     nat(amount0) +
-        //     nat(
-        //         FullMath.mulDiv(
-        //             feeGrowthInside0LastX128 - position.feeGrowthInside0LastX128,
-        //             positionLiquidity,
-        //             FixedPoint128.Q128
-        //         )
-        //     );
-        // position.tokensOwed1 +=
-        //     nat(amount1) +
-        //     nat(
-        //         FullMath.mulDiv(
-        //             feeGrowthInside1LastX128 - position.feeGrowthInside1LastX128,
-        //             positionLiquidity,
-        //             FixedPoint128.Q128
-        //         )
-        //     );
-
-        // position.feeGrowthInside0LastX128 = feeGrowthInside0LastX128;
-        // position.feeGrowthInside1LastX128 = feeGrowthInside1LastX128;
-        // // subtraction is safe because we checked positionLiquidity is gte params.liquidity
-        // position.liquidity = positionLiquidity - params.liquidity;
-
-        // emit DecreaseLiquidity(params.tokenId, params.liquidity, amount0, amount1);
-    }
-
-    /// @inheritdoc INonfungiblePositionManager
-    getter collect(params: CollectParams)
-        // external
-        // payable
-        // override
-        // isAuthorizedForToken(params.tokenId)
-        // returns 
-        :
-        (
-            nat /* amount0 */, 
-            nat /* amount1 */
-        )
-    {
-        // require(params.amount0Max > 0 || params.amount1Max > 0);
-        // // allow collecting to the nft position manager address with address 0
-        // address recipient = params.recipient == address(0) ? address(this) : params.recipient;
-
-        // Position storage position = positions_[params.tokenId];
-
-        // PoolAddress.PoolKey memory poolKey = poolIdToPoolKey[position.poolId];
-
-        // IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
-
-        // (nat tokensOwed0, nat tokensOwed1) = (position.tokensOwed0, position.tokensOwed1);
-
-        // // trigger an update of the position fees owed and fee growth snapshots if it has any liquidity
-        // if (position.liquidity > 0) {
-        //     pool.burn(position.tickLower, position.tickUpper, 0);
-        //     (, nat feeGrowthInside0LastX128, nat feeGrowthInside1LastX128, , ) =
-        //         pool.positions(PositionKey.compute(address(this), position.tickLower, position.tickUpper));
-
-        //     tokensOwed0 += nat(
-        //         FullMath.mulDiv(
-        //             feeGrowthInside0LastX128 - position.feeGrowthInside0LastX128,
-        //             position.liquidity,
-        //             FixedPoint128.Q128
-        //         )
-        //     );
-        //     tokensOwed1 += nat(
-        //         FullMath.mulDiv(
-        //             feeGrowthInside1LastX128 - position.feeGrowthInside1LastX128,
-        //             position.liquidity,
-        //             FixedPoint128.Q128
-        //         )
-        //     );
-
-        //     position.feeGrowthInside0LastX128 = feeGrowthInside0LastX128;
-        //     position.feeGrowthInside1LastX128 = feeGrowthInside1LastX128;
-        // }
-
-        // // compute the arguments to give to the pool#collect method
-        // (nat amount0Collect, nat amount1Collect) =
-        //     (
-        //         params.amount0Max > tokensOwed0 ? tokensOwed0 : params.amount0Max,
-        //         params.amount1Max > tokensOwed1 ? tokensOwed1 : params.amount1Max
-        //     );
-
-        // // the actual amounts collected are returned
-        // (amount0, amount1) = pool.collect(
-        //     recipient,
-        //     position.tickLower,
-        //     position.tickUpper,
-        //     amount0Collect,
-        //     amount1Collect
-        // );
-
-        // // sometimes there will be a few less wei than expected due to rounding down in core, but we just subtract the full amount expected
-        // // instead of the actual amount so we can burn the token
-        // (position.tokensOwed0, position.tokensOwed1) = (tokensOwed0 - amount0Collect, tokensOwed1 - amount1Collect);
-
-        // emit Collect(params.tokenId, recipient, amount0Collect, amount1Collect);
-    }
-
-    /// @inheritdoc INonfungiblePositionManager
-    entry burn(tokenId: nat) 
-    // external payable override isAuthorizedForToken(tokenId) 
-    {
-        // Position storage position = positions_[tokenId];
-        // require(position.liquidity == 0 && position.tokensOwed0 == 0 && position.tokensOwed1 == 0, 'Not cleared');
-        // delete positions_[tokenId];
-        // _burn(tokenId);
-    }
-
-    getter _getAndIncrementNonce(tokenId: nat) 
-    // internal override returns (nat) 
-    : nat {
-        // return nat(positions_[tokenId].nonce++);
-    }
-
-    /// @inheritdoc IERC721
-    getter getApproved(tokenId: nat) 
-    // public view override(ERC721, IERC721) returns (address) 
-    : address {
-        // require(_exists(tokenId), 'ERC721: approved query for nonexistent token');
-
-        // return positions_[tokenId].operator;
-    }
-
-    /// @dev Overrides _approve to use the operator in the position, which is packed with the position permit nonce
-    entry _approve(to: address, tokenId: nat) 
-    // internal override(ERC721) 
-    {
-        // positions_[tokenId].operator = to;
-        // emit Approval(ownerOf(tokenId), to, tokenId);
-    }
-// }
+// custom update_operators to do this action
+// so with update_operators, check_operator should be updated.
+//     /// @dev Overrides _approve to use the operator in the position, which is packed with the position permit nonce
+//     entry _approve(to: address, tokenId: nat) 
+//     // internal override(ERC721) 
+//     {
+//         // positions_[tokenId].operator = to;
+//         // emit Approval(ownerOf(tokenId), to, tokenId);
+//     }
+// // }
