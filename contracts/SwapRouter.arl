@@ -32,7 +32,6 @@ record ExactInputSingleParams {
     tokenOut: address;
     fee: nat;
     recipient: address;
-    // deadline: nat;
     deadline: date;
     amountIn: nat;
     amountOutMinimum: nat;
@@ -53,7 +52,7 @@ record ExactOutputSingleParams {
     tokenOut_ExactOutputSingleParams: address;
     fee_ExactOutputSingleParams: nat;
     recipient_ExactOutputSingleParams: address;
-    deadline_ExactOutputSingleParams: nat;
+    deadline_ExactOutputSingleParams: date;
     amountOut: nat;
     amountInMaximum: nat;
     sqrtPriceLimitX96_ExactOutputSingleParams: nat;
@@ -67,15 +66,11 @@ record ExactOutputParams {
     amountInMaximum_ExactOutputParams: nat;
 }
 
-//     PeripheryImmutableState,
-//     PeripheryValidation,
-    function checkDeadline(deadline_: date): bool {
-        // require {
-        //     r: deadline >= now otherwise "TIME_OVER";
-        // }
-        do_require(deadline_ >= now, "TIME_OVER");
-        return true
-    }
+function checkDeadline(deadline_: date): bool {
+    do_require(now <= deadline_, "Transaction too old");
+    return true
+}
+
 //     PeripheryPaymentsWithFee,
 // import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 // import '@uniswap/v3-core/contracts/libraries/LowGasSafeMath.sol';
@@ -91,72 +86,72 @@ record ExactOutputParams {
 // import './PeripheryImmutableState.sol';
 
 // abstract contract PeripheryPayments is IPeripheryPayments, PeripheryImmutableState {
-    entry receive()
-    //  external payable 
-    {
-        // require(msg.sender == WETH9, 'Not WETH9');
-    }
+// entry receive()
+// //  external payable 
+// {
+//     // require(msg.sender == WETH9, 'Not WETH9');
+// }
 
-    /// @inheritdoc IPeripheryPayments
-    entry unwrapWETH9(amountMinimum: nat, recipient_: address)
-    //  public payable override 
-    {
-        // nat balanceWETH9 = IWETH9(WETH9).balanceOf(address(this));
-        // require(balanceWETH9 >= amountMinimum, 'Insufficient WETH9');
+// /// @inheritdoc IPeripheryPayments
+// entry unwrapWETH9(amountMinimum: nat, recipient_: address)
+// //  public payable override 
+// {
+//     // nat balanceWETH9 = IWETH9(WETH9).balanceOf(address(this));
+//     // require(balanceWETH9 >= amountMinimum, 'Insufficient WETH9');
 
-        // if (balanceWETH9 > 0) {
-        //     IWETH9(WETH9).withdraw(balanceWETH9);
-        //     TransferHelper.safeTransferETH(recipient_, balanceWETH9);
-        // }
-    }
+//     // if (balanceWETH9 > 0) {
+//     //     IWETH9(WETH9).withdraw(balanceWETH9);
+//     //     TransferHelper.safeTransferETH(recipient_, balanceWETH9);
+//     // }
+// }
 
-    /// @inheritdoc IPeripheryPayments
-    entry sweepToken(
-        token: address,
-        amountMinimum: nat,
-        recipient_: address
-    )
-    //  public payable override 
-    {
-        // nat balanceToken = IERC20(token).balanceOf(address(this));
-        // require(balanceToken >= amountMinimum, 'Insufficient token');
+// /// @inheritdoc IPeripheryPayments
+// entry sweepToken(
+//     token: address,
+//     amountMinimum: nat,
+//     recipient_: address
+// )
+// //  public payable override 
+// {
+//     // nat balanceToken = IERC20(token).balanceOf(address(this));
+//     // require(balanceToken >= amountMinimum, 'Insufficient token');
 
-        // if (balanceToken > 0) {
-        //     TransferHelper.safeTransfer(token, recipient_, balanceToken);
-        // }
-    }
+//     // if (balanceToken > 0) {
+//     //     TransferHelper.safeTransfer(token, recipient_, balanceToken);
+//     // }
+// }
 
-    /// @inheritdoc IPeripheryPayments
-    entry refundETH() 
-    // external payable override 
-    {
-        // if (address(this).balance > 0) TransferHelper.safeTransferETH(msg.sender, address(this).balance);
-    }
+// /// @inheritdoc IPeripheryPayments
+// entry refundETH() 
+// // external payable override 
+// {
+//     // if (address(this).balance > 0) TransferHelper.safeTransferETH(msg.sender, address(this).balance);
+// }
 
-    /// @param token The token to pay
-    /// @param payer The entity that must pay
-    /// @param recipient The entity that will receive payment
-    /// @param value The amount to pay
-    entry pay(
-        token: address,
-        payer_: address,
-        recipient_: address,
-        value: nat
-    ) 
-    // internal 
-    {
-        // if (token == WETH9 && address(this).balance >= value) {
-        //     // pay with WETH9
-        //     IWETH9(WETH9).deposit{value: value}(); // wrap only what is needed to pay
-        //     IWETH9(WETH9).transfer(recipient_, value);
-        // } else if (payer_ == address(this)) {
-        //     // pay with tokens already in the contract (for the exact input multihop case)
-        //     TransferHelper.safeTransfer(token, recipient_, value);
-        // } else {
-        //     // pull payment
-        //     TransferHelper.safeTransferFrom(token, payer_, recipient_, value);
-        // }
-    }
+// /// @param token The token to pay
+// /// @param payer The entity that must pay
+// /// @param recipient The entity that will receive payment
+// /// @param value The amount to pay
+// entry pay(
+//     token: address,
+//     payer_: address,
+//     recipient_: address,
+//     value: nat
+// ) 
+// // internal 
+// {
+//     // if (token == WETH9 && address(this).balance >= value) {
+//     //     // pay with WETH9
+//     //     IWETH9(WETH9).deposit{value: value}(); // wrap only what is needed to pay
+//     //     IWETH9(WETH9).transfer(recipient_, value);
+//     // } else if (payer_ == address(this)) {
+//     //     // pay with tokens already in the contract (for the exact input multihop case)
+//     //     TransferHelper.safeTransfer(token, recipient_, value);
+//     // } else {
+//     //     // pull payment
+//     //     TransferHelper.safeTransferFrom(token, payer_, recipient_, value);
+//     // }
+// }
 // }
 
 // import '../interfaces/IPeripheryPaymentsWithFee.sol';
@@ -167,75 +162,75 @@ record ExactOutputParams {
 // abstract contract PeripheryPaymentsWithFee is PeripheryPayments, IPeripheryPaymentsWithFee {
     // using LowGasSafeMath for nat;
 
-    /// @inheritdoc IPeripheryPaymentsWithFee
-    entry unwrapWETH9WithFee(
-        amountMinimum: nat,
-        recipient_: address,
-        feeBips: nat,
-        feeRecipient: address
-    ) 
-    // public payable override 
-    {
-        // require(feeBips > 0 && feeBips <= 100);
+// /// @inheritdoc IPeripheryPaymentsWithFee
+// entry unwrapWETH9WithFee(
+//     amountMinimum: nat,
+//     recipient_: address,
+//     feeBips: nat,
+//     feeRecipient: address
+// ) 
+// // public payable override 
+// {
+//     // require(feeBips > 0 && feeBips <= 100);
 
-        // nat balanceWETH9 = IWETH9(WETH9).balanceOf(address(this));
-        // require(balanceWETH9 >= amountMinimum, 'Insufficient WETH9');
+//     // nat balanceWETH9 = IWETH9(WETH9).balanceOf(address(this));
+//     // require(balanceWETH9 >= amountMinimum, 'Insufficient WETH9');
 
-        // if (balanceWETH9 > 0) {
-        //     IWETH9(WETH9).withdraw(balanceWETH9);
-        //     nat feeAmount = balanceWETH9.mul(feeBips) / 10_000;
-        //     if (feeAmount > 0) TransferHelper.safeTransferETH(feeRecipient, feeAmount);
-        //     TransferHelper.safeTransferETH(recipient_, balanceWETH9 - feeAmount);
-        // }
-    }
+//     // if (balanceWETH9 > 0) {
+//     //     IWETH9(WETH9).withdraw(balanceWETH9);
+//     //     nat feeAmount = balanceWETH9.mul(feeBips) / 10_000;
+//     //     if (feeAmount > 0) TransferHelper.safeTransferETH(feeRecipient, feeAmount);
+//     //     TransferHelper.safeTransferETH(recipient_, balanceWETH9 - feeAmount);
+//     // }
+// }
 
-    /// @inheritdoc IPeripheryPaymentsWithFee
-    entry sweepTokenWithFee(
-        token: address,
-        amountMinimum: nat,
-        recipient_: address,
-        feeBips: nat,
-        feeRecipient: address
-    ) 
-    // public payable override 
-    {
-        // require(feeBips > 0 && feeBips <= 100);
+// /// @inheritdoc IPeripheryPaymentsWithFee
+// entry sweepTokenWithFee(
+//     token: address,
+//     amountMinimum: nat,
+//     recipient_: address,
+//     feeBips: nat,
+//     feeRecipient: address
+// ) 
+// // public payable override 
+// {
+//     // require(feeBips > 0 && feeBips <= 100);
 
-        // nat balanceToken = IERC20(token).balanceOf(address(this));
-        // require(balanceToken >= amountMinimum, 'Insufficient token');
+//     // nat balanceToken = IERC20(token).balanceOf(address(this));
+//     // require(balanceToken >= amountMinimum, 'Insufficient token');
 
-        // if (balanceToken > 0) {
-        //     nat feeAmount = balanceToken.mul(feeBips) / 10_000;
-        //     if (feeAmount > 0) TransferHelper.safeTransfer(token, feeRecipient, feeAmount);
-        //     TransferHelper.safeTransfer(token, recipient_, balanceToken - feeAmount);
-        // }
-    }
+//     // if (balanceToken > 0) {
+//     //     nat feeAmount = balanceToken.mul(feeBips) / 10_000;
+//     //     if (feeAmount > 0) TransferHelper.safeTransfer(token, feeRecipient, feeAmount);
+//     //     TransferHelper.safeTransfer(token, recipient_, balanceToken - feeAmount);
+//     // }
+// }
 //     Multicall,
 //     SelfPermit
 // {
-    // using Path for bytes;
-    // using SafeCast for nat;
+// using Path for bytes;
+// using SafeCast for nat;
 
-    /// @dev Used as the placeholder value for amountInCached, because the computed amount in for an exact output swap
-    /// can never actually be this value
-    constant DEFAULT_AMOUNT_IN_CACHED: nat = 57896044618658097711785492504343953926634992332820282019730
+/// @dev Used as the placeholder value for amountInCached, because the computed amount in for an exact output swap
+/// can never actually be this value
+constant DEFAULT_AMOUNT_IN_CACHED: nat = 57896044618658097711785492504343953926634992332820282019730
 
-    /// @dev Transient storage variable used for returning the computed amount in for an exact output swap.
-    constant amountInCached: nat = DEFAULT_AMOUNT_IN_CACHED
+/// @dev Transient storage variable used for returning the computed amount in for an exact output swap.
+constant amountInCached: nat = DEFAULT_AMOUNT_IN_CACHED
 
-    /// @dev Returns the pool for the given token pair and fee. The pool contract may or may not exist.
-    // view getPool(
-    //     tokenA: address,
-    //     tokenB: address,
-    //     fee: nat
-    // ) /* private view returns (IUniswapV3Pool) */ : IUniswapV3Pool {
-    //     // return IUniswapV3Pool(PoolAddress.computeAddress(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee)));
-    // }
+/// @dev Returns the pool for the given token pair and fee. The pool contract may or may not exist.
+// view getPool(
+//     tokenA: address,
+//     tokenB: address,
+//     fee: nat
+// ) /* private view returns (IUniswapV3Pool) */ : IUniswapV3Pool {
+//     // return IUniswapV3Pool(PoolAddress.computeAddress(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee)));
+// }
 
-    record SwapCallbackData {
-        path_SwapCallbackData: bytes;
-        payer_SwapCallbackData: address;
-    }
+record SwapCallbackData {
+    path_SwapCallbackData: bytes;
+    payer_SwapCallbackData: address;
+}
 
     /// @inheritdoc IUniswapV3SwapCallback
 entry uniswapV3SwapCallback(
