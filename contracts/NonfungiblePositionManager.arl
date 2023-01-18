@@ -1033,7 +1033,7 @@ entry decreaseLiquidity(params: DecreaseLiquidityParams)
 
     // (amount0, amount1) = pool.burn(position.tickLower, position.tickUpper, params.liquidity);
     // guess return values
-    const retVal_burn ?= call_view<nat * nat>(pool_param, "burn_view", (position.tickLower_Pos, position.tickUpper_Pos, params.liquidity_DecLp)): INVALID_OPERATION;
+    const retVal_burn ?= call_view<nat * nat>(kodexV3lib, "burn", (position.tickLower_Pos, position.tickUpper_Pos, params.liquidity_DecLp, pool_param)): INVALID_OPERATION;
     const amount0 = retVal_burn[0];
     const amount1 = retVal_burn[1];
     const positionInfo_param ?= call_view<PositionInfo>(
