@@ -1,4 +1,5 @@
-archetype SwapRouter(const factory: address, const WETH9: address)
+archetype SwapRouter(const factory: address)
+// archetype SwapRouter(const factory: address, const WETH9: address)
 
 // import '@uniswap/v3-core/contracts/libraries/SafeCast.sol';
 // import '@uniswap/v3-core/contracts/libraries/TickMath.sol';
@@ -26,45 +27,45 @@ constant MIN_SQRT_RATIO: nat = 4295128739
 /// @dev The maximum value that can be returned from #getSqrtRatioAtTick. Equivalent to getSqrtRatioAtTick(MAX_TICK)
 constant MAX_SQRT_RATIO: nat = 1461446703485210103287273052203988822378723970342
 
-    record ExactInputSingleParams {
-        tokenIn: address;
-        tokenOut: address;
-        fee: nat;
-        recipient: address;
-        // deadline: nat;
-        deadline: date;
-        amountIn: nat;
-        amountOutMinimum: nat;
-        sqrtPriceLimitX96: nat;
-    }
+record ExactInputSingleParams {
+    tokenIn: address;
+    tokenOut: address;
+    fee: nat;
+    recipient: address;
+    // deadline: nat;
+    deadline: date;
+    amountIn: nat;
+    amountOutMinimum: nat;
+    sqrtPriceLimitX96: nat;
+}
 
-    record ExactInputParams {
-        path: bytes;
-        recipient_ExactInputParams: address;
-        // deadline_ExactInputParams: nat;
-        deadline_ExactInputParams: date;
-        amountIn_ExactInputParams: nat;
-        amountOutMinimum_ExactInputParams: nat;
-    }
+record ExactInputParams {
+    path: bytes;
+    recipient_ExactInputParams: address;
+    // deadline_ExactInputParams: nat;
+    deadline_ExactInputParams: date;
+    amountIn_ExactInputParams: nat;
+    amountOutMinimum_ExactInputParams: nat;
+}
 
-    record ExactOutputSingleParams {
-        tokenIn_ExactOutputSingleParams: address;
-        tokenOut_ExactOutputSingleParams: address;
-        fee_ExactOutputSingleParams: nat;
-        recipient_ExactOutputSingleParams: address;
-        deadline_ExactOutputSingleParams: nat;
-        amountOut: nat;
-        amountInMaximum: nat;
-        sqrtPriceLimitX96_ExactOutputSingleParams: nat;
-    }
+record ExactOutputSingleParams {
+    tokenIn_ExactOutputSingleParams: address;
+    tokenOut_ExactOutputSingleParams: address;
+    fee_ExactOutputSingleParams: nat;
+    recipient_ExactOutputSingleParams: address;
+    deadline_ExactOutputSingleParams: nat;
+    amountOut: nat;
+    amountInMaximum: nat;
+    sqrtPriceLimitX96_ExactOutputSingleParams: nat;
+}
 
-    record ExactOutputParams {
-        path_ExactOutputParams: bytes;
-        recipient_ExactOutputParams: address;
-        deadline_ExactOutputParams: nat;
-        amountOut_ExactOutputParams: nat;
-        amountInMaximum_ExactOutputParams: nat;
-    }
+record ExactOutputParams {
+    path_ExactOutputParams: bytes;
+    recipient_ExactOutputParams: address;
+    deadline_ExactOutputParams: nat;
+    amountOut_ExactOutputParams: nat;
+    amountInMaximum_ExactOutputParams: nat;
+}
 
 //     PeripheryImmutableState,
 //     PeripheryValidation,
