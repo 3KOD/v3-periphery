@@ -355,11 +355,11 @@ entry update_operators (upl : list<update_op>) {
       match up with
       | add_operator(param) -> (* add *)
         do_require(param.opp_owner = caller , FA2_NOT_OWNER);
-        positions_[param.opp_token_id].position_.operator_Pos := param.opp_operator;
+        positions_[param.opp_token_id].position_ := {positions_[param.opp_token_id].position_ with operator_Pos = param.opp_operator};
         operator.put({param.opp_operator; param.opp_token_id; param.opp_owner})
       | remove_operator(param) -> (* remove *)
         do_require(param.opp_owner = caller , FA2_NOT_OWNER);
-        positions_[param.opp_token_id].position_.operator_Pos := self_address;
+        positions_[param.opp_token_id].position_ := {positions_[param.opp_token_id].position_ with operator_Pos = self_address};
         operator.remove((param.opp_operator, param.opp_token_id, param.opp_owner))
       end;
     done;
@@ -574,19 +574,6 @@ record MintParams {
     deadline_MintParams: date; // uint256
 }
 
-/// @notice Deterministically computes the pool address given the factory and PoolKey
-/// @param factory The Uniswap V3 factory contract address
-/// @param key The PoolKey
-/// @return pool The contract address of the V3 pool
-view computeAddress(factory_param: address, key_param: PoolKey) : address {
-    const retVal ?= call_view<address>(
-        factory_param, 
-        "computeAddress", 
-        (key_param.token0_PoolKey, key_param.token1_PoolKey, key_param.fee_PoolKey)
-    ): INVALID_OPERATION;
-    return retVal
-}
-
 /// @inheritdoc IkodexV3PoolState
 record Slot0 {
     // the current price
@@ -656,7 +643,7 @@ function getLiquidityForAmount1(
 /// @param amount0 The amount of token0 being sent in
 /// @param amount1 The amount of token1 being sent in
 /// @return liquidity The maximum amount of liquidity received
-view getLiquidityForAmounts(
+function getLiquidityForAmounts(
     sqrtRatioX96: nat,
     sqrtRatioAX96: nat,
     sqrtRatioBX96: nat,
@@ -739,7 +726,11 @@ entry mint(params: MintParams)
     // {
     const poolKey_param: PoolKey = {params.token0_MintParams; params.token1_MintParams; params.fee_MintParams};
 
-    const pool_param = computeAddress(factory, poolKey_param);
+    const pool_param ?= call_view<address>(
+        factory, 
+        "computeAddress", 
+        (poolKey_param.token0_PoolKey, poolKey_param.token1_PoolKey, poolKey_param.fee_PoolKey)
+    ): INVALID_OPERATION;
 
     // compute the liquidity amount
     // (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
@@ -779,7 +770,6 @@ entry mint(params: MintParams)
         params.tickUpper_MintParams,
         liquidity,
         pack(pack_data)));
-    
 
     // _mint(params.recipient, (tokenId = nextId_++));
     const tokenId = nextId_;
@@ -894,7 +884,11 @@ entry increaseLiquidity(params: IncreaseLiquidityParams)
     // PoolAddress.PoolKey memory poolKey = poolIdToPoolKey[position.poolId];
     const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
 
-    const pool_param = computeAddress(factory, poolKey_param);
+    const pool_param ?= call_view<address>(
+        factory, 
+        "computeAddress", 
+        (poolKey_param.token0_PoolKey, poolKey_param.token1_PoolKey, poolKey_param.fee_PoolKey)
+    ): INVALID_OPERATION;
 
     // IUniswapV3Pool pool;
     // (liquidity, amount0, amount1, pool) = addLiquidity(
@@ -1029,7 +1023,11 @@ entry decreaseLiquidity(params: DecreaseLiquidityParams)
     do_require(positionLiquidity >= params.liquidity_DecLp, "ERR");
 
     const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
-    const pool_param = computeAddress(factory, poolKey_param);
+    const pool_param ?= call_view<address>(
+        factory, 
+        "computeAddress", 
+        (poolKey_param.token0_PoolKey, poolKey_param.token1_PoolKey, poolKey_param.fee_PoolKey)
+    ): INVALID_OPERATION;
 
     // (amount0, amount1) = pool.burn(position.tickLower, position.tickUpper, params.liquidity);
     // guess return values
@@ -1105,7 +1103,11 @@ entry collect(params: CollectParams)
     const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
 
     // IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
-    const pool_param = computeAddress(factory, poolKey_param);
+    const pool_param ?= call_view<address>(
+        factory, 
+        "computeAddress", 
+        (poolKey_param.token0_PoolKey, poolKey_param.token1_PoolKey, poolKey_param.fee_PoolKey)
+    ): INVALID_OPERATION;
 
     // (nat tokensOwed0, nat tokensOwed1) = (position.tokensOwed0_Pos, position.tokensOwed1_Pos);
     var tokensOwed0 = position.tokensOwed0_Pos;
