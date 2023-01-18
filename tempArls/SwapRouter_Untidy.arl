@@ -1,0 +1,582 @@
+archetype SwapRouter(const factory: address)
+// archetype SwapRouter(const factory: address, const WETH9: address)
+
+// import '@uniswap/v3-core/contracts/libraries/SafeCast.sol';
+// import '@uniswap/v3-core/contracts/libraries/TickMath.sol';
+// import '@uniswap/v3-core/contracts/interfaces/IKodexV3Pool.sol';
+
+// import './interfaces/ISwapRouter.sol';
+// import './base/PeripheryImmutableState.sol';
+// import './base/PeripheryValidation.sol';
+// import './base/PeripheryPaymentsWithFee.sol';
+// import './base/Multicall.sol';
+// import './base/SelfPermit.sol';
+// import './libraries/Path.sol';
+// import './libraries/PoolAddress.sol';
+// import './libraries/CallbackValidation.sol';
+// import './interfaces/external/IWETH9.sol';
+
+/// @title Uniswap V3 Swap Router
+/// @notice Router for stateless execution of swaps against Uniswap V3
+
+//     ISwapRouter,
+// import '@uniswap/v3-core/contracts/interfaces/callback/IKodexV3SwapCallback.sol';
+constant INVALID_OPERATION: string = "ERR"
+
+constant MIN_SQRT_RATIO: nat = 4295128739
+/// @dev The maximum value that can be returned from #getSqrtRatioAtTick. Equivalent to getSqrtRatioAtTick(MAX_TICK)
+constant MAX_SQRT_RATIO: nat = 1461446703485210103287273052203988822378723970342
+
+record ExactInputSingleParams {
+    tokenIn_InSParam: address;
+    tokenOut_InSParam: address;
+    fee_InSParam: nat;
+    recipient_InSParam: address;
+    deadline_InSParam: date;
+    amountIn_InSParam: nat;
+    amountOutMinimum_InSParam: nat;
+    sqrtPriceLimitX96_InSParam: nat;
+}
+
+record ExactInputParams {
+    path_InParam: bytes;
+    recipient_InParam: address;
+    deadline_InParam: date;
+    amountIn_InParam: nat;
+    amountOutMinimum_InParam: nat;
+}
+
+record ExactOutputSingleParams {
+    tokenIn_OutSParam: address;
+    tokenOut_OutSParam: address;
+    fee_OutSParam: nat;
+    recipient_OutSParam: address;
+    deadline_OutSParam: date;
+    amountOut_OutSParam: nat;
+    amountInMaximum_OutSParam: nat;
+    sqrtPriceLimitX96_OutSParam: nat;
+}
+
+record ExactOutputParams {
+    path_OutParam: bytes;
+    recipient_OutParam: address;
+    deadline_OutParam: nat;
+    amountOut_OutParam: nat;
+    amountInMaximum_OutParam: nat;
+}
+
+function checkDeadline(deadline_: date): bool {
+    do_require(now <= deadline_, "Transaction too old");
+    return true
+}
+
+//     PeripheryPaymentsWithFee,
+// import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+// import '@uniswap/v3-core/contracts/libraries/LowGasSafeMath.sol';
+
+// import './PeripheryPayments.sol';
+// import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+
+// import '../interfaces/IPeripheryPayments.sol';
+// import '../interfaces/external/IWETH9.sol';
+
+// import '../libraries/TransferHelper.sol';
+
+// import './PeripheryImmutableState.sol';
+
+// abstract contract PeripheryPayments is IPeripheryPayments, PeripheryImmutableState {
+// entry receive()
+// //  external payable 
+// {
+//     // require(msg.sender == WETH9, 'Not WETH9');
+// }
+
+// /// @inheritdoc IPeripheryPayments
+// entry unwrapWETH9(amountMinimum: nat, recipient_: address)
+// //  public payable override 
+// {
+//     // nat balanceWETH9 = IWETH9(WETH9).balanceOf(address(this));
+//     // require(balanceWETH9 >= amountMinimum, 'Insufficient WETH9');
+
+//     // if (balanceWETH9 > 0) {
+//     //     IWETH9(WETH9).withdraw(balanceWETH9);
+//     //     TransferHelper.safeTransferETH(recipient_, balanceWETH9);
+//     // }
+// }
+
+// /// @inheritdoc IPeripheryPayments
+// entry sweepToken(
+//     token: address,
+//     amountMinimum: nat,
+//     recipient_: address
+// )
+// //  public payable override 
+// {
+//     // nat balanceToken = IERC20(token).balanceOf(address(this));
+//     // require(balanceToken >= amountMinimum, 'Insufficient token');
+
+//     // if (balanceToken > 0) {
+//     //     TransferHelper.safeTransfer(token, recipient_, balanceToken);
+//     // }
+// }
+
+// /// @inheritdoc IPeripheryPayments
+// entry refundETH() 
+// // external payable override 
+// {
+//     // if (address(this).balance > 0) TransferHelper.safeTransferETH(msg.sender, address(this).balance);
+// }
+
+// /// @param token The token to pay
+// /// @param payer The entity that must pay
+// /// @param recipient The entity that will receive payment
+// /// @param value The amount to pay
+// entry pay(
+//     token: address,
+//     payer_: address,
+//     recipient_: address,
+//     value: nat
+// ) 
+// // internal 
+// {
+//     // if (token == WETH9 && address(this).balance >= value) {
+//     //     // pay with WETH9
+//     //     IWETH9(WETH9).deposit{value: value}(); // wrap only what is needed to pay
+//     //     IWETH9(WETH9).transfer(recipient_, value);
+//     // } else if (payer_ == address(this)) {
+//     //     // pay with tokens already in the contract (for the exact input multihop case)
+//     //     TransferHelper.safeTransfer(token, recipient_, value);
+//     // } else {
+//     //     // pull payment
+//     //     TransferHelper.safeTransferFrom(token, payer_, recipient_, value);
+//     // }
+// }
+// }
+
+// import '../interfaces/IPeripheryPaymentsWithFee.sol';
+
+// import '../interfaces/external/IWETH9.sol';
+// import '../libraries/TransferHelper.sol';
+
+// abstract contract PeripheryPaymentsWithFee is PeripheryPayments, IPeripheryPaymentsWithFee {
+    // using LowGasSafeMath for nat;
+
+// /// @inheritdoc IPeripheryPaymentsWithFee
+// entry unwrapWETH9WithFee(
+//     amountMinimum: nat,
+//     recipient_: address,
+//     feeBips: nat,
+//     feeRecipient: address
+// ) 
+// // public payable override 
+// {
+//     // require(feeBips > 0 && feeBips <= 100);
+
+//     // nat balanceWETH9 = IWETH9(WETH9).balanceOf(address(this));
+//     // require(balanceWETH9 >= amountMinimum, 'Insufficient WETH9');
+
+//     // if (balanceWETH9 > 0) {
+//     //     IWETH9(WETH9).withdraw(balanceWETH9);
+//     //     nat feeAmount = balanceWETH9.mul(feeBips) / 10_000;
+//     //     if (feeAmount > 0) TransferHelper.safeTransferETH(feeRecipient, feeAmount);
+//     //     TransferHelper.safeTransferETH(recipient_, balanceWETH9 - feeAmount);
+//     // }
+// }
+
+// /// @inheritdoc IPeripheryPaymentsWithFee
+// entry sweepTokenWithFee(
+//     token: address,
+//     amountMinimum: nat,
+//     recipient_: address,
+//     feeBips: nat,
+//     feeRecipient: address
+// ) 
+// // public payable override 
+// {
+//     // require(feeBips > 0 && feeBips <= 100);
+
+//     // nat balanceToken = IERC20(token).balanceOf(address(this));
+//     // require(balanceToken >= amountMinimum, 'Insufficient token');
+
+//     // if (balanceToken > 0) {
+//     //     nat feeAmount = balanceToken.mul(feeBips) / 10_000;
+//     //     if (feeAmount > 0) TransferHelper.safeTransfer(token, feeRecipient, feeAmount);
+//     //     TransferHelper.safeTransfer(token, recipient_, balanceToken - feeAmount);
+//     // }
+// }
+//     Multicall,
+//     SelfPermit
+// {
+// using Path for bytes;
+// using SafeCast for nat;
+
+/// @dev Used as the placeholder value for amountInCached, because the computed amount in for an exact output swap
+/// can never actually be this value
+constant DEFAULT_AMOUNT_IN_CACHED: nat = 115_792_089_237_316_195_423_570_985_008_687_907_853_269_984_665_640_564_039_457_584_007_913_129_639_935
+
+/// @dev Transient storage variable used for returning the computed amount in for an exact output swap.
+variable amountInCached: nat = DEFAULT_AMOUNT_IN_CACHED
+
+/// @dev Returns the pool for the given token pair and fee. The pool contract may or may not exist.
+// view getPool(
+//     tokenA: address,
+//     tokenB: address,
+//     fee: nat
+// ) /* private view returns (IKodexV3Pool) */ : IKodexV3Pool {
+//     // return IKodexV3Pool(PoolAddress.computeAddress(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee)));
+// }
+
+record SwapCallbackData {
+    path_SwapCallbackData: bytes;
+    payer_SwapCallbackData: address;
+}
+
+/// @inheritdoc IKodexV3SwapCallback
+entry kodexV3SwapCallback(
+    amount0Delta: int,
+    amount1Delta: int,
+    data_: bytes
+) {
+    // require(amount0Delta > 0 || amount1Delta > 0); // swaps entirely within 0-liquidity regions are not supported
+    do_require((amount0Delta > 0) or (amount1Delta > 0), INVALID_OPERATION);
+    // SwapCallbackData memory data = abi.decode(data_, (SwapCallbackData));
+    const data: SwapCallbackData ?= unpack<SwapCallbackData>(data_) : INVALID_OPERATION;
+    // (address tokenIn, address tokenOut, uint24 fee) = data.path.decodeFirstPool();
+    const decode_param ?= unpack<address * address * nat>(data.path_SwapCallbackData);
+    const tokenIn_param: address = decode_param[0];
+    const tokenOut_param: address = decode_param[1];
+    const fee_param: nat = decode_param[2];
+
+    // CallbackValidation.verifyCallback(factory, tokenIn, tokenOut, fee);
+    const pool_param ?= call_view<address>(
+        factory, 
+        "computeAddress", 
+        (tokenIn_param, tokenOut_param, fee_param)
+    ): INVALID_OPERATION;
+    do_require(caller = pool_param, INVALID_OPERATION);
+
+    const isExactInput: bool = amount0Delta > 0 ? (tokenIn_param < tokenOut_param) : (tokenOut_param < tokenIn_param);
+    const amountToPay_int: int = amount0Delta > 0 ?  amount0Delta : amount1Delta;
+    const amountToPay: nat ?= int_to_nat(amountToPay_int) : INVALID_OPERATION;
+    if (isExactInput = false) then begin
+        // Let's image there is no hasMultiplePools path
+        // either initiate the next swap or pay
+        // if (data.path.hasMultiplePools()) {
+        //     data.path = data.path.skipToken();
+        //     exactOutputInternal(amountToPay, msg.sender, 0, data);
+        // } else {
+        amountInCached := amountToPay
+        // tokenIn_param := tokenOut_param; // swap in/out because exact output swaps are reversed
+        // pay(tokenIn, data.payer, msg.sender, amountToPay);
+        // }
+    end
+}
+
+/// @dev Performs a single exact input swap
+// entry exactInputInternal(
+//     amountIn_: nat,
+//     recipient_: address,
+//     sqrtPriceLimitX96_: nat,
+//     data: SwapCallbackData
+// ) {
+
+//     // allow swapping to the router address with address 0
+//     // if (recipient == address(0)) recipient = address(this);
+
+//     // (address tokenIn, address tokenOut, uint24 fee) = data.path.decodeFirstPool();
+//     const decode_param ?= unpack<address * address * nat>(data.path_SwapCallbackData);
+//     const tokenIn_param: address = decode_param[0];
+//     const tokenOut_param: address = decode_param[1];
+//     const fee_param: nat = decode_param[2];
+
+//     // bool zeroForOne = tokenIn < tokenOut;
+//     var zeroForOne: bool = tokenIn_param < tokenOut_param;
+//     // (int256 amount0, int256 amount1) =
+//     //     getPool(tokenIn, tokenOut, fee).swap(
+//     //         recipient,
+//     //         zeroForOne,
+//     //         amountIn.toInt256(),
+//     //         sqrtPriceLimitX96 == 0
+//     //             ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
+//     //             : sqrtPriceLimitX96,.
+
+//     //         abi.encode(data)
+//     //     );
+//     const poolAddress ?= call_view<address>(factory, "computeAddress", (tokenIn_param, tokenOut_param, fee_param)) : INVALID_OPERATION;
+//     const sqrtPriceLimitX96_int: int = (sqrtPriceLimitX96_ = 0) ? (zeroForOne ? (MIN_SQRT_RATIO + 1i) : (MAX_SQRT_RATIO - 1)) : sqrtPriceLimitX96_;
+//     const sqrtPriceLimitX96_nat: nat ?= int_to_nat(sqrtPriceLimitX96_int) : INVALID_OPERATION;
+
+//     const retVal_swap ?= call_view<int * int>(poolAddress, "swap_view", (
+//         zeroForOne, 
+//         (amountIn_ - 0), 
+//         sqrtPriceLimitX96_nat
+//         )
+//     ) : INVALID_OPERATION;
+//     transfer 0tz to poolAddress call swap<address * bool * int * nat * bytes>((
+//         recipient_, 
+//         zeroForOne, 
+//         (amountIn_ - 0), 
+//         sqrtPriceLimitX96_nat,
+//         pack(data)
+//     ));
+//     const amount0 = retVal_swap[0];
+//     const amount1 = retVal_swap[1];
+//     const amountOut_param ?= int_to_nat(-(zeroForOne ? amount1 : amount0)) : INVALID_OPERATION;
+//     return amountOut_param
+// }
+
+/// @inheritdoc ISwapRouter
+// getter exactInputSingle(params: ExactInputSingleParams)
+//     // external
+//     // payable
+//     // override
+//     // checkDeadline(params.deadline)
+//     // returns (nat amountOut)
+//     : nat
+entry exactInputSingle(params: ExactInputSingleParams)
+{
+    do_require(checkDeadline(params.deadline_InSParam), INVALID_OPERATION);
+    // amountOut = exactInputInternal(
+    //     params.amountIn,
+    //     params.recipient,
+    //     params.sqrtPriceLimitX96,
+    //     SwapCallbackData({path: abi.encodePacked(params.tokenIn, params.fee, params.tokenOut), payer: msg.sender})
+    // );
+    /// @dev Performs a single exact input swap
+    // entry exactInputInternal(
+    //     amountIn_: nat,
+    //     recipient_: address,
+    //     sqrtPriceLimitX96_: nat,
+    //     data: SwapCallbackData
+    // ) {
+
+    // allow swapping to the router address with address 0
+    // if (recipient == address(0)) recipient = address(this);
+
+    // (address tokenIn, address tokenOut, uint24 fee) = data.path.decodeFirstPool();
+    const tokenIn_param: address = params.tokenIn_InSParam;
+    const tokenOut_param: address = params.tokenOut_InSParam;
+    const fee_param: nat = params.fee_InSParam;
+
+    var zeroForOne: bool = tokenIn_param < tokenOut_param;
+    const poolAddress ?= call_view<address>(factory, "computeAddress", (tokenIn_param, tokenOut_param, fee_param)) : INVALID_OPERATION;
+    const sqrtPriceLimitX96_int: int = (params.sqrtPriceLimitX96_InSParam = 0) ? (zeroForOne ? (MIN_SQRT_RATIO + 1i) : (MAX_SQRT_RATIO - 1)) : params.sqrtPriceLimitX96_InSParam;
+    const sqrtPriceLimitX96_nat: nat ?= int_to_nat(sqrtPriceLimitX96_int) : INVALID_OPERATION;
+    const path_param: bytes = pack((params.tokenIn_InSParam, params.tokenOut_InSParam, params.fee_InSParam));
+    const pack_data: SwapCallbackData = {pack(path_param); caller};
+
+    const retVal_swap ?= call_view<int * int>(poolAddress, "swap_view", (
+        zeroForOne, 
+        (params.amountIn_InSParam - 0), 
+        sqrtPriceLimitX96_nat
+        )
+    ) : INVALID_OPERATION;
+    transfer 0tz to poolAddress call swap<address * bool * int * nat * bytes>((
+        params.recipient_InSParam, 
+        zeroForOne, 
+        (params.amountIn_InSParam - 0), 
+        sqrtPriceLimitX96_nat,
+        pack(pack_data)
+    ));
+    const amount0 = retVal_swap[0];
+    const amount1 = retVal_swap[1];
+    const amountOut_param ?= int_to_nat(-(zeroForOne ? amount1 : amount0)) : INVALID_OPERATION;
+    // }
+
+    do_require(amountOut_param >= params.amountOutMinimum_InSParam, "Too little received");
+}
+
+// Let's image there is no hasMultiplePools path, so this is skipped.
+/// @inheritdoc ISwapRouter
+// getter exactInput(params: ExactInputParams)
+// entry exactInput(params: ExactInputParams) 
+// // external
+// // payable
+// // override
+// // checkDeadline(params.deadline)
+// // returns (nat amountOut)
+// // : nat
+// {
+    
+//     const payer: address = caller; // msg.sender pays for the first hop
+//     do_require(checkDeadline(params.deadline_ExactInputParams), INVALID_OPERATION);
+//     while (true) do
+//         bool hasMultiplePools = params.path.hasMultiplePools();
+//         // the outputs of prior swaps become the inputs to subsequent ones
+//         params.amountIn = exactInputInternal(
+//             params.amountIn,
+//             hasMultiplePools ? address(this) : params.recipient, // for intermediate swaps, this contract custodies
+//             0,
+//             SwapCallbackData({
+//                 path: params.path.getFirstPool(), // only the first pool in the path is necessary
+//                 payer: payer
+//             })
+//         );
+
+//         // decide whether to continue or terminate
+//         if (hasMultiplePools) {
+//             payer = address(this); // at this point, the caller has paid
+//             params.path = params.path.skipToken();
+//         } else {
+//             amountOut = params.amountIn;
+//             break;
+//         }
+//     done;
+//     // require(amountOut >= params.amountOutMinimum, 'Too little received');
+// }
+
+// /// @dev Performs a single exact output swap
+// entry exactOutputInternal(
+//     amountOut_: nat, // uint256 
+//     recipient_: address, // address 
+//     sqrtPriceLimitX96_: nat, // uint160 
+//     data: SwapCallbackData // SwapCallbackData memory 
+// ) 
+// // private returns (uint256 amountIn) 
+// {
+//     // allow swapping to the router address with address 0
+//     // if (recipient == address(0)) recipient = address(this);
+
+//     // (address tokenOut, address tokenIn, uint24 fee) = data.path.decodeFirstPool();
+//     const decode_param ?= unpack<address * address * nat>(data.path_SwapCallbackData);
+//     const tokenOut_param: address = decode_param[0];
+//     const tokenIn_param: address = decode_param[1];
+//     const fee_param: nat = decode_param[2];
+
+//     const zeroForOne: bool = (tokenIn_param < tokenOut_param);
+
+//     // (int256 amount0Delta, int256 amount1Delta) =
+//     //     getPool(tokenIn, tokenOut, fee).swap(
+//     //         recipient,
+//     //         zeroForOne,
+//     //         -amountOut.toInt256(),
+//     //         sqrtPriceLimitX96_ == 0
+//     //             ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
+//     //             : sqrtPriceLimitX96_,
+//     //         abi.encode(data)
+//     //     );
+    
+//     const poolAddress ?= call_view<address>(factory, "computeAddress", (tokenIn_param, tokenOut_param, fee_param)) : INVALID_OPERATION;
+//     const sqrtPriceLimitX96_int: int = (sqrtPriceLimitX96_ = 0) ? (zeroForOne ? (MIN_SQRT_RATIO + 1i) : (MAX_SQRT_RATIO - 1)) : sqrtPriceLimitX96_;
+//     const sqrtPriceLimitX96_nat: nat ?= int_to_nat(sqrtPriceLimitX96_int) : INVALID_OPERATION;
+
+//     const retVal_swap ?= call_view<int * int>(poolAddress, "swap_view", (zeroForOne, -amountOut_, sqrtPriceLimitX96_nat)) : INVALID_OPERATION;
+//     transfer 0tz to poolAddress call swap<address * bool * int * nat * bytes>((
+//         recipient_, 
+//         zeroForOne, 
+//         -amountOut_, 
+//         sqrtPriceLimitX96_nat,
+//         pack(data)
+//     ));
+//     const amount0Delta = retVal_swap[0];
+//     const amount1Delta = retVal_swap[1];
+//     const amountIn_int = zeroForOne ? amount0Delta : amount1Delta;
+//     const amountIn_: nat ?= int_to_nat(amountIn_int) : INVALID_OPERATION;
+//     const amountOutReceived_int: int = zeroForOne ? -amount1Delta : -amount0Delta;
+//     const amountOutReceived: nat ?= int_to_nat(amountOutReceived_int) : INVALID_OPERATION;
+//     // it's technically possible to not receive the full output amount,
+//     // so if no price limit has been specified, require this possibility away
+//     if (sqrtPriceLimitX96_ = 0) then 
+//         do_require(amountOutReceived = amountOut_, INVALID_OPERATION)
+// }
+
+/// @inheritdoc ISwapRouter
+entry exactOutputSingle(params: ExactOutputSingleParams)
+// external
+// payable
+// override
+// checkDeadline(params.deadline)
+// returns (uint256 amountIn)
+{
+    do_require(checkDeadline(params.deadline_OutSParam), INVALID_OPERATION);
+    // avoid an SLOAD by using the swap return data
+    // amountIn = exactOutputInternal(
+    //     params.amountOut_OutSParam,
+    //     params.recipient_OutSParam,
+    //     params.sqrtPriceLimitX96_OutSParam,
+    //     SwapCallbackData({path: abi.encodePacked(params.tokenOut_OutSParam, params.fee_OutSParam, params.tokenIn_OutSParam), payer: msg.sender})
+    // );
+    
+    // /// @dev Performs a single exact output swap
+    // entry exactOutputInternal(
+    //     amountOut_: nat, // uint256 // params.amountOut_OutSParam
+    //     recipient_: address, // address // params.recipient_OutSParam
+    //     sqrtPriceLimitX96_: nat, // uint160 // params.sqrtPriceLimitX96_OutSParam
+    //     data: SwapCallbackData // SwapCallbackData memory 
+    // ) 
+    // // private returns (uint256 amountIn) 
+    // allow swapping to the router address with address 0
+    // if (recipient == address(0)) recipient = address(this);
+
+    // (address tokenOut, address tokenIn, uint24 fee) = data.path.decodeFirstPool();
+    // const decode_param ?= unpack<address * address * nat>(data.path_SwapCallbackData);
+    const tokenOut_param: address = params.tokenOut_OutSParam;
+    const tokenIn_param: address = params.tokenIn_OutSParam;
+    const fee_param: nat = params.fee_OutSParam;
+
+    const zeroForOne: bool = (tokenIn_param < tokenOut_param);
+
+    const path_param: bytes = pack((tokenOut_param, tokenIn_param, fee_param));
+    const pack_data: SwapCallbackData = {pack(path_param); caller};
+
+    // (int256 amount0Delta, int256 amount1Delta) =
+    //     getPool(tokenIn, tokenOut, fee).swap(
+    //         recipient,
+    //         zeroForOne,
+    //         -amountOut.toInt256(),
+    //         params.sqrtPriceLimitX96_OutSParam == 0
+    //             ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
+    //             : params.sqrtPriceLimitX96_OutSParam,
+    //         abi.encode(data)
+    //     );
+    
+    const poolAddress ?= call_view<address>(factory, "computeAddress", (tokenIn_param, tokenOut_param, fee_param)) : INVALID_OPERATION;
+    const sqrtPriceLimitX96_int: int = (params.sqrtPriceLimitX96_OutSParam = 0) ? (zeroForOne ? (MIN_SQRT_RATIO + 1i) : (MAX_SQRT_RATIO - 1)) : params.sqrtPriceLimitX96_OutSParam;
+    const sqrtPriceLimitX96_nat: nat ?= int_to_nat(sqrtPriceLimitX96_int) : INVALID_OPERATION;
+
+    const retVal_swap ?= call_view<int * int>(poolAddress, "swap_view", (zeroForOne, -params.amountOut_OutSParam, sqrtPriceLimitX96_nat)) : INVALID_OPERATION;
+    transfer 0tz to poolAddress call swap<address * bool * int * nat * bytes>((
+        params.recipient_OutSParam, 
+        zeroForOne, 
+        -params.amountOut_OutSParam, 
+        sqrtPriceLimitX96_nat,
+        pack(pack_data)
+    ));
+    const amount0Delta = retVal_swap[0];
+    const amount1Delta = retVal_swap[1];
+    const amountIn_int = zeroForOne ? amount0Delta : amount1Delta;
+    const amountIn: nat ?= int_to_nat(amountIn_int) : INVALID_OPERATION;
+    const amountOutReceived_int: int = zeroForOne ? -amount1Delta : -amount0Delta;
+    const amountOutReceived: nat ?= int_to_nat(amountOutReceived_int) : INVALID_OPERATION;
+    // it's technically possible to not receive the full output amount,
+    // so if no price limit has been specified, require this possibility away
+    if (params.sqrtPriceLimitX96_OutSParam = 0) then 
+        do_require(amountOutReceived = params.amountOut_OutSParam, INVALID_OPERATION);
+
+    do_require(amountIn <= params.amountInMaximum_OutSParam, "Too much requested");
+    // has to be reset even though we don't use it in the single hop case
+    amountInCached := DEFAULT_AMOUNT_IN_CACHED
+}
+
+// Let's image there is no hasMultiplePools path, so this is skipped.
+// /// @inheritdoc ISwapRouter
+// function exactOutput(ExactOutputParams calldata params)
+//     external
+//     payable
+//     override
+//     checkDeadline(params.deadline)
+//     returns (uint256 amountIn)
+// {
+//     // it's okay that the payer is fixed to msg.sender here, as they're only paying for the "final" exact output
+//     // swap, which happens first, and subsequent swaps are paid for within nested callback frames
+//     exactOutputInternal(
+//         params.amountOut,
+//         params.recipient,
+//         0,
+//         SwapCallbackData({path: params.path, payer: msg.sender})
+//     );
+
+//     amountIn = amountInCached;
+//     require(amountIn <= params.amountInMaximum, "Too much requested");
+//     amountInCached = DEFAULT_AMOUNT_IN_CACHED;
+// }
