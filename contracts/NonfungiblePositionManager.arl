@@ -767,9 +767,14 @@ entry mint(params: MintParams)
     // this action is performed in mint of pool contract
     // require((amount0 >= params.amount0Min) and (amount1 >= params.amount1Min), "Price slippage check");
     // }
+    const positionInfo_param ?= call_view<PositionInfo>(
+        pool_param,
+        "mint_PositionInfo_view",
+        (self_address, params.tickLower_MintParams, params.tickUpper_MintParams, liquidity)
+    ): INVALID_OPERATION;
     const pack_data: MintCallbackData = {poolKey_param; caller; params.amount0Min_MintParams; params.amount1Min_MintParams};
     transfer 0tz to pool_param call mint<address * int * int * nat * bytes>((
-        params.recipient_MintParams,
+        self_address,
         params.tickLower_MintParams,
         params.tickUpper_MintParams,
         liquidity,
@@ -786,11 +791,11 @@ entry mint(params: MintParams)
 
     // bytes32 positionKey = PositionKey.compute(address(this), params.tickLower, params.tickUpper);
     // (, nat feeGrowthInside0LastX128, nat feeGrowthInside1LastX128, , ) = pool.positions(positionKey);
-    const positionInfo_param ?= call_view<PositionInfo>(
-        pool_param, 
-        "getPositionInfo", 
-        (self_address, params.tickLower_MintParams, params.tickUpper_MintParams)
-    ): INVALID_OPERATION;
+    // const positionInfo_param ?= call_view<PositionInfo>(
+    //     pool_param, 
+    //     "getPositionInfo", 
+    //     (self_address, params.tickLower_MintParams, params.tickUpper_MintParams)
+    // ): INVALID_OPERATION;
     const feeGrowthInside0LastX128_param: nat = positionInfo_param.feeGrowthInside0LastX128_PosInfo;
     const feeGrowthInside1LastX128_param: nat = positionInfo_param.feeGrowthInside1LastX128_PosInfo;
 
@@ -944,6 +949,11 @@ entry increaseLiquidity(params: IncreaseLiquidityParams)
     // this action is performed in mint of pool contract
     // require((amount0 >= params.amount0Min) and (amount1 >= params.amount1Min), "Price slippage check");
     // }
+    const positionInfo_param ?= call_view<PositionInfo>(
+        pool_param,
+        "mint_PositionInfo_view",
+        (self_address, position.tickLower_Pos, position.tickUpper_Pos, liquidity)
+    ): INVALID_OPERATION;
     const pack_data: MintCallbackData = {poolKey_param; caller; params.amount0Min_IncLp; params.amount1Min_IncLp};
     transfer 0tz to pool_param call mint<address * int * int * nat * bytes>((
         self_address,
@@ -965,11 +975,11 @@ entry increaseLiquidity(params: IncreaseLiquidityParams)
 
     // // this is now updated to the current transaction
     // (, nat feeGrowthInside0LastX128, nat feeGrowthInside1LastX128, , ) = pool.positions(positionKey);
-    const positionInfo_param ?= call_view<PositionInfo>(
-        pool_param, 
-        "getPositionInfo", 
-        (self_address, position.tickLower_Pos, position.tickUpper_Pos)
-    ): INVALID_OPERATION;
+    // const positionInfo_param ?= call_view<PositionInfo>(
+    //     pool_param, 
+    //     "getPositionInfo", 
+    //     (self_address, position.tickLower_Pos, position.tickUpper_Pos)
+    // ): INVALID_OPERATION;
     const feeGrowthInside0LastX128_param: nat = positionInfo_param.feeGrowthInside0LastX128_PosInfo;
     const feeGrowthInside1LastX128_param: nat = positionInfo_param.feeGrowthInside1LastX128_PosInfo;
 
@@ -1026,6 +1036,11 @@ entry decreaseLiquidity(params: DecreaseLiquidityParams)
     const retVal_burn ?= call_view<nat * nat>(pool_param, "burn_view", (position.tickLower_Pos, position.tickUpper_Pos, params.liquidity_DecLp)): INVALID_OPERATION;
     const amount0 = retVal_burn[0];
     const amount1 = retVal_burn[1];
+    const positionInfo_param ?= call_view<PositionInfo>(
+        pool_param,
+        "burn_PositionInfo_view",
+        (position.tickLower_Pos, position.tickUpper_Pos, params.liquidity_DecLp)
+    ): INVALID_OPERATION;
     transfer 0tz to pool_param call burn<int * int * nat>((position.tickLower_Pos, position.tickUpper_Pos, params.liquidity_DecLp));
 
     do_require((amount0 >= params.amount0Min_DecLp) and (amount1 >= params.amount1Min_DecLp), "Price slippage check");
@@ -1033,11 +1048,11 @@ entry decreaseLiquidity(params: DecreaseLiquidityParams)
     // bytes32 positionKey = PositionKey.compute(address(this), position.tickLower, position.tickUpper);
     // // this is now updated to the current transaction
     // (, nat feeGrowthInside0LastX128, nat feeGrowthInside1LastX128, , ) = pool.positions(positionKey);
-    const positionInfo_param ?= call_view<PositionInfo>(
-        pool_param, 
-        "getPositionInfo", 
-        (self_address, position.tickLower_Pos, position.tickUpper_Pos)
-    ): INVALID_OPERATION;
+    // const positionInfo_param ?= call_view<PositionInfo>(
+    //     pool_param, 
+    //     "getPositionInfo", 
+    //     (self_address, position.tickLower_Pos, position.tickUpper_Pos)
+    // ): INVALID_OPERATION;
     const feeGrowthInside0LastX128_param: nat = positionInfo_param.feeGrowthInside0LastX128_PosInfo;
     const feeGrowthInside1LastX128_param: nat = positionInfo_param.feeGrowthInside1LastX128_PosInfo;
 
@@ -1098,15 +1113,20 @@ entry collect(params: CollectParams)
 
     // trigger an update of the position fees owed and fee growth snapshots if it has any liquidity
     if (position.liquidity_Pos > 0) then begin
+        const positionInfo_param ?= call_view<PositionInfo>(
+            pool_param,
+            "burn_PositionInfo_view",
+            (position.tickLower_Pos, position.tickUpper_Pos, 0)
+        ): INVALID_OPERATION;
         // pool.burn(position.tickLower_Pos, position.tickUpper_Pos, 0);
         transfer 0tz to pool_param call burn<int * int * nat>((position.tickLower_Pos, position.tickUpper_Pos, 0));
         // (, nat feeGrowthInside0LastX128, nat feeGrowthInside1LastX128, , ) =
         //     pool.positions(PositionKey.compute(address(this), position.tickLower_Pos, position.tickUpper_Pos));
-        const positionInfo_param ?= call_view<PositionInfo>(
-            pool_param, 
-            "getPositionInfo", 
-            (self_address, position.tickLower_Pos, position.tickUpper_Pos)
-        ): INVALID_OPERATION;
+        // const positionInfo_param ?= call_view<PositionInfo>(
+        //     pool_param, 
+        //     "getPositionInfo", 
+        //     (self_address, position.tickLower_Pos, position.tickUpper_Pos)
+        // ): INVALID_OPERATION;
         const feeGrowthInside0LastX128_param: nat = positionInfo_param.feeGrowthInside0LastX128_PosInfo;
         const feeGrowthInside1LastX128_param: nat = positionInfo_param.feeGrowthInside1LastX128_PosInfo;
 
