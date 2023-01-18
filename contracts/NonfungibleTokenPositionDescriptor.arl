@@ -1,0 +1,16 @@
+/// @title Describes NFT token positions
+/// @notice Produces a string containing the data URI for a JSON metadata string
+archetype NonfungibleTokenPositionDescriptor
+
+constant INVALID_OPERATION: string = "INVALID"
+
+/// @inheritdoc INonfungibleTokenPositionDescriptor
+view tokenURI(positionManager: address, tokenId: nat): bytes {
+    const position ?= call_view<address * address * address * nat * int * int * nat * nat * nat * nat * nat>(
+        positionManager, 
+        "positions", 
+        tokenId
+    ): INVALID_OPERATION;
+
+    return pack(position)
+}

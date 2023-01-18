@@ -840,11 +840,11 @@ function isAuthorizedForToken(tokenId: nat) : bool {
 view tokenURI(tokenId: nat) 
 // public view override(ERC721, IERC721Metadata) 
 // returns (string memory) 
-: string
+: bytes
 {
     // require(_exists(tokenId));
     do_require(is_some(ledger[tokenId]?.lowner), FA2_TOKEN_UNDEFINED);
-    const retVal ?= call_view<string>(tokenDescriptor, "tokenURI", (self_address, tokenId));
+    const retVal ?= call_view<bytes>(tokenDescriptor, "tokenURI", (self_address, tokenId));
     return retVal
 }
 
