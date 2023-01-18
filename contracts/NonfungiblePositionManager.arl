@@ -3,7 +3,7 @@
 /// @dev The address of the token descriptor contract, which handles generating token URIs for position tokens
 archetype NonfungiblePositionManager(
     const factory: address, 
-    const WETH9: address, 
+    // const WETH9: address, 
     const tokenDescriptor: address, 
     const kodexV3lib: address, 
     owner : address, 
