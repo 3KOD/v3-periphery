@@ -12,6 +12,158 @@ archetype NonfungiblePositionManager(
 // INonfungibleTokenPositionDescriptor
 // address private immutable tokenDescriptor;
 
+constant INVALID_OPERATION: string = "INVALID"
+constant Q96: nat = 1 <<| 96
+constant Q128: nat = 1 <<| 128
+
+// pragma solidity =0.7.6;
+// pragma abicoder v2;
+
+// import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
+// import '@uniswap/v3-core/contracts/libraries/FixedPoint128.sol';
+// import '@uniswap/v3-core/contracts/libraries/FullMath.sol';
+
+// import './interfaces/INonfungiblePositionManager.sol';
+// import './interfaces/INonfungibleTokenPositionDescriptor.sol';
+// import './libraries/PositionKey.sol';
+// import './libraries/PoolAddress.sol';
+// import './base/LiquidityManagement.sol';
+// import './base/PeripheryImmutableState.sol';
+// import './base/Multicall.sol';
+// import './base/ERC721Permit.sol';
+// import './base/PeripheryValidation.sol';
+// import './base/SelfPermit.sol';
+// import './base/PoolInitializer.sol';
+
+/// @notice Emitted when liquidity is increased for a position NFT
+/// @dev Also emitted when a token is minted
+/// @param tokenId The ID of the token for which liquidity was increased
+/// @param liquidity The amount by which liquidity for the NFT position was increased
+/// @param amount0 The amount of token0 that was paid for the increase in liquidity
+/// @param amount1 The amount of token1 that was paid for the increase in liquidity
+event IncreaseLiquidity {
+    tokenId_Inc: nat; // uint256
+    liquidity_Inc: nat // uint128
+    // amount0_Inc: nat; // uint256
+    // amount1_Inc: nat // uint256
+}
+/// @notice Emitted when liquidity is decreased for a position NFT
+/// @param tokenId The ID of the token for which liquidity was decreased
+/// @param liquidity The amount by which liquidity for the NFT position was decreased
+/// @param amount0 The amount of token0 that was accounted for the decrease in liquidity
+/// @param amount1 The amount of token1 that was accounted for the decrease in liquidity
+event DecreaseLiquidity {
+    tokenId_Dec: nat; // uint256
+    liquidity_Dec: nat; // uint128
+    amount0_Dec: nat; // uint256
+    amount1_Dec: nat // uint256
+}
+/// @notice Emitted when tokens are collected for a position NFT
+/// @dev The amounts reported may not be exactly equivalent to the amounts transferred, due to rounding behavior
+/// @param tokenId The ID of the token for which underlying tokens were collected
+/// @param recipient The address of the account that received the collected tokens
+/// @param amount0 The amount of token0 owed to the position that was collected
+/// @param amount1 The amount of token1 owed to the position that was collected
+event Collect{
+    tokenId_Col: nat; // uint256
+    recipient_Col: address; // address
+    amount0_Col: nat; // uint256
+    amount1_Col: nat // uint256
+}
+
+function checkDeadline(deadline: date): bool {
+    do_require(now <= deadline, "Transaction too old");
+    return true
+}
+
+/// @notice The identifying key of the pool
+record PoolKey {
+    token0_PoolKey: address;
+    token1_PoolKey: address;
+    fee_PoolKey: nat; // uint24
+} as (((token0, token1), fee))
+
+record MintCallbackData {
+    poolKey_MintData: PoolKey;
+    payer_MintData: address;
+    amount0Min_MintData: nat;
+    amount1Min_MintData: nat;
+}
+
+record AddLiquidityParams {
+    token0: address; // address;
+    token1: address; // address;
+    fee: nat; // uint24;
+    recipient: address; // address;
+    tickLower: int; // int24;
+    tickUpper: int; // int24;
+    amount0Desired: nat; // uint256;
+    amount1Desired: nat; // uint256;
+    amount0Min: nat; // uint256;
+    amount1Min: nat; // uint256;
+}
+
+// constant name = "Uniswap V3 Positions NFT-V1";
+// constant symbol = "UNI-V3-POS";
+// constant nameHash = keccak256(bytes(name));
+// constant versionHash = keccak256(bytes(1));
+//     INonfungiblePositionManager,
+//     Multicall,
+//     ERC721Permit,
+//     PeripheryImmutableState,
+//     PoolInitializer,
+//     LiquidityManagement,
+//     PeripheryValidation,
+//     SelfPermit
+// {
+    
+// details about the uniswap position
+record Position {
+    // the nonce for permits
+    // nonce_Pos: nat; // uint96;
+    // the address that is approved for spending this token
+    operator_Pos: address; // address;
+    // the ID of the pool with which this token is connected
+    poolId_Pos: nat; // uint80;
+    // the tick range of the position
+    tickLower_Pos: int; // int24;
+    tickUpper_Pos: int; // int24;
+    // the liquidity of the position
+    liquidity_Pos: nat; // uint128;
+    // the fee growth of the aggregate position as of the last action on the individual position
+    feeGrowthInside0LastX128_Pos: nat; // uint256;
+    feeGrowthInside1LastX128_Pos: nat; // uint256;
+    // how many uncollected tokens are owed to the position, as of the last computation
+    tokensOwed0_Pos: nat; // uint128;
+    tokensOwed1_Pos: nat; // uint128;
+}
+
+/// @dev IDs of pools assigned by this contract
+// mapping(address => uint80) private _poolIds;
+asset poolIds identified by pool to big_map {
+    pool: address;
+    poolId: nat = 0;
+}
+
+/// @dev Pool keys by pool ID, to save on SSTOREs for position data
+// mapping(uint80 => PoolAddress.PoolKey) private _poolIdToPoolKey;
+asset poolIdToPoolKey identified by poolId_ to big_map {
+    poolId_: nat;
+    poolKey: PoolKey;
+}
+
+/// @dev The token ID position data
+// mapping(uint256 => Position) private positions_;
+asset positions_ identified by tokenId_ to big_map {
+    tokenId_: nat;
+    position_: Position;
+}
+
+/// @dev The ID of the next token that will be minted. Skips 0
+variable nextId_: nat = 1 // uint176 private
+/// @dev The ID of the next pool that is used for the first time. Skips 0
+variable nextPoolId_: nat = 1 // uint80 private
+
 /* OWNERSHIP TRANSFER ------------------------------------------------------- */
 
 variable owner_candidate : option<address> = none
@@ -356,158 +508,6 @@ entry permit_transfer (txs : list<transfer_param>, permit : option<key * signatu
     end
   }
 }
-
-constant INVALID_OPERATION: string = "INVALID"
-constant Q96: nat = 1 <<| 96
-constant Q128: nat = 1 <<| 128
-
-// pragma solidity =0.7.6;
-// pragma abicoder v2;
-
-// import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
-// import '@uniswap/v3-core/contracts/libraries/FixedPoint128.sol';
-// import '@uniswap/v3-core/contracts/libraries/FullMath.sol';
-
-// import './interfaces/INonfungiblePositionManager.sol';
-// import './interfaces/INonfungibleTokenPositionDescriptor.sol';
-// import './libraries/PositionKey.sol';
-// import './libraries/PoolAddress.sol';
-// import './base/LiquidityManagement.sol';
-// import './base/PeripheryImmutableState.sol';
-// import './base/Multicall.sol';
-// import './base/ERC721Permit.sol';
-// import './base/PeripheryValidation.sol';
-// import './base/SelfPermit.sol';
-// import './base/PoolInitializer.sol';
-
-/// @notice Emitted when liquidity is increased for a position NFT
-/// @dev Also emitted when a token is minted
-/// @param tokenId The ID of the token for which liquidity was increased
-/// @param liquidity The amount by which liquidity for the NFT position was increased
-/// @param amount0 The amount of token0 that was paid for the increase in liquidity
-/// @param amount1 The amount of token1 that was paid for the increase in liquidity
-event IncreaseLiquidity {
-    tokenId_Inc: nat; // uint256
-    liquidity_Inc: nat // uint128
-    // amount0_Inc: nat; // uint256
-    // amount1_Inc: nat // uint256
-}
-/// @notice Emitted when liquidity is decreased for a position NFT
-/// @param tokenId The ID of the token for which liquidity was decreased
-/// @param liquidity The amount by which liquidity for the NFT position was decreased
-/// @param amount0 The amount of token0 that was accounted for the decrease in liquidity
-/// @param amount1 The amount of token1 that was accounted for the decrease in liquidity
-event DecreaseLiquidity {
-    tokenId_Dec: nat; // uint256
-    liquidity_Dec: nat; // uint128
-    amount0_Dec: nat; // uint256
-    amount1_Dec: nat // uint256
-}
-/// @notice Emitted when tokens are collected for a position NFT
-/// @dev The amounts reported may not be exactly equivalent to the amounts transferred, due to rounding behavior
-/// @param tokenId The ID of the token for which underlying tokens were collected
-/// @param recipient The address of the account that received the collected tokens
-/// @param amount0 The amount of token0 owed to the position that was collected
-/// @param amount1 The amount of token1 owed to the position that was collected
-event Collect{
-    tokenId_Col: nat; // uint256
-    recipient_Col: address; // address
-    amount0_Col: nat; // uint256
-    amount1_Col: nat // uint256
-}
-
-function checkDeadline(deadline: date): bool {
-    do_require(now <= deadline, "Transaction too old");
-    return true
-}
-
-/// @notice The identifying key of the pool
-record PoolKey {
-    token0_PoolKey: address;
-    token1_PoolKey: address;
-    fee_PoolKey: nat; // uint24
-} as (((token0, token1), fee))
-
-record MintCallbackData {
-    poolKey_MintData: PoolKey;
-    payer_MintData: address;
-    amount0Min_MintData: nat;
-    amount1Min_MintData: nat;
-}
-
-record AddLiquidityParams {
-    token0: address; // address;
-    token1: address; // address;
-    fee: nat; // uint24;
-    recipient: address; // address;
-    tickLower: int; // int24;
-    tickUpper: int; // int24;
-    amount0Desired: nat; // uint256;
-    amount1Desired: nat; // uint256;
-    amount0Min: nat; // uint256;
-    amount1Min: nat; // uint256;
-}
-
-// constant name = "Uniswap V3 Positions NFT-V1";
-// constant symbol = "UNI-V3-POS";
-// constant nameHash = keccak256(bytes(name));
-// constant versionHash = keccak256(bytes(1));
-//     INonfungiblePositionManager,
-//     Multicall,
-//     ERC721Permit,
-//     PeripheryImmutableState,
-//     PoolInitializer,
-//     LiquidityManagement,
-//     PeripheryValidation,
-//     SelfPermit
-// {
-    
-// details about the uniswap position
-record Position {
-    // the nonce for permits
-    // nonce_Pos: nat; // uint96;
-    // the address that is approved for spending this token
-    operator_Pos: address; // address;
-    // the ID of the pool with which this token is connected
-    poolId_Pos: nat; // uint80;
-    // the tick range of the position
-    tickLower_Pos: int; // int24;
-    tickUpper_Pos: int; // int24;
-    // the liquidity of the position
-    liquidity_Pos: nat; // uint128;
-    // the fee growth of the aggregate position as of the last action on the individual position
-    feeGrowthInside0LastX128_Pos: nat; // uint256;
-    feeGrowthInside1LastX128_Pos: nat; // uint256;
-    // how many uncollected tokens are owed to the position, as of the last computation
-    tokensOwed0_Pos: nat; // uint128;
-    tokensOwed1_Pos: nat; // uint128;
-}
-
-/// @dev IDs of pools assigned by this contract
-// mapping(address => uint80) private _poolIds;
-asset poolIds identified by pool to big_map {
-    pool: address;
-    poolId: nat = 0;
-}
-
-/// @dev Pool keys by pool ID, to save on SSTOREs for position data
-// mapping(uint80 => PoolAddress.PoolKey) private _poolIdToPoolKey;
-asset poolIdToPoolKey identified by poolId_ to big_map {
-    poolId_: nat;
-    poolKey: PoolKey;
-}
-
-/// @dev The token ID position data
-// mapping(uint256 => Position) private positions_;
-asset positions_ identified by tokenId_ to big_map {
-    tokenId_: nat;
-    position_: Position;
-}
-
-/// @dev The ID of the next token that will be minted. Skips 0
-variable nextId_: nat = 1 // uint176 private
-/// @dev The ID of the next pool that is used for the first time. Skips 0
-variable nextPoolId_: nat = 1 // uint80 private
 
 // constructor(
 //     address _factory,
