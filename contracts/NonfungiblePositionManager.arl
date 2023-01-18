@@ -465,7 +465,7 @@ record AddLiquidityParams {
 // details about the uniswap position
 record Position {
     // the nonce for permits
-    nonce_Pos: nat; // uint96;
+    // nonce_Pos: nat; // uint96;
     // the address that is approved for spending this token
     operator_Pos: address; // address;
     // the ID of the pool with which this token is connected
@@ -524,7 +524,8 @@ view positions(tokenId: nat)
 // external
 // view
 // override
-:  nat * address * address * address * nat * int * int * nat * nat * nat * nat * nat
+// :  nat * address * address * address * nat * int * int * nat * nat * nat * nat * nat
+:  address * address * address * nat * int * int * nat * nat * nat * nat * nat
 // (
     /* uint96 nonce: nat, */
     /* address operator: address, */
@@ -544,7 +545,7 @@ view positions(tokenId: nat)
     do_require(position.poolId_Pos <> 0, "Invalid token ID");
     const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
     return ((
-        position.nonce_Pos,
+        // position.nonce_Pos,
         position.operator_Pos,
         poolKey_param.token0_PoolKey,
         poolKey_param.token1_PoolKey,
@@ -817,7 +818,7 @@ entry mint(params: MintParams)
 
 
     positions_[tokenId].position_ := {
-        0;
+        // 0;
         // address(0);
         self_address; // TODO+
         poolId_param;
@@ -1172,16 +1173,16 @@ entry burn(tokenId: nat)
     // }
 }
 
-// custom permit and others of permits contract to do this action
-entry getAndIncrementNonce(tokenId: nat) 
-// internal override returns (nat) 
-// : nat 
-{
-    called by permits
-    effect {
-        positions_[tokenId].position_.nonce_Pos += 1
-    }
-}
+// // custom permit and others of permits contract to do this action
+// entry getAndIncrementNonce(tokenId: nat) 
+// // internal override returns (nat) 
+// // : nat 
+// {
+//     called by permits
+//     effect {
+//         positions_[tokenId].position_.nonce_Pos += 1
+//     }
+// }
 
 /// @inheritdoc IERC721
 view getApproved(tokenId: nat) 
@@ -1196,11 +1197,10 @@ view getApproved(tokenId: nat)
 
 // custom update_operators to do this action
 // so with update_operators, check_operator should be updated.
-//     /// @dev Overrides _approve to use the operator in the position, which is packed with the position permit nonce
-//     entry _approve(to: address, tokenId: nat) 
-//     // internal override(ERC721) 
-//     {
-//         // positions_[tokenId].operator = to;
-//         // emit Approval(ownerOf(tokenId), to, tokenId);
-//     }
-// // }
+// /// @dev Overrides _approve to use the operator in the position, which is packed with the position permit nonce
+// entry _approve(to: address, tokenId: nat) 
+// // internal override(ERC721) 
+// {
+//     // positions_[tokenId].operator = to;
+//     // emit Approval(ownerOf(tokenId), to, tokenId);
+// }
