@@ -12,14 +12,14 @@ archetype NonfungiblePositionManager(
 // INonfungibleTokenPositionDescriptor
 // address private immutable tokenDescriptor;
 
-constant INVALID_OPERATION: string = "INVALID"
+constant INVALID_OPERATION: string = "ERR"
 constant Q96: nat = 1 <<| 96
 constant Q128: nat = 1 <<| 128
 
 // pragma solidity =0.7.6;
 // pragma abicoder v2;
 
-// import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
+// import '@uniswap/v3-core/contracts/interfaces/IKodexV3Pool.sol';
 // import '@uniswap/v3-core/contracts/libraries/FixedPoint128.sol';
 // import '@uniswap/v3-core/contracts/libraries/FullMath.sol';
 
@@ -697,8 +697,8 @@ entry mint(params: MintParams)
     //     nat /* amount1 */
     // )
 {
-    do_require(checkDeadline(params.deadline_MintParams), "ERR");
-    // IUniswapV3Pool pool;
+    do_require(checkDeadline(params.deadline_MintParams), INVALID_OPERATION);
+    // IKodexV3Pool pool;
     // (liquidity, amount0, amount1, pool) = addLiquidity(
     //     AddLiquidityParams({
     //         token0: params.token0,
@@ -721,7 +721,7 @@ entry mint(params: MintParams)
     //         uint128 liquidity,
     //         uint256 amount0,
     //         uint256 amount1,
-    //         IUniswapV3Pool pool
+    //         IKodexV3Pool pool
     //     )
     // {
     const poolKey_param: PoolKey = {params.token0_MintParams; params.token1_MintParams; params.fee_MintParams};
@@ -760,8 +760,8 @@ entry mint(params: MintParams)
     // }
     const positionInfo_param ?= call_view<PositionInfo>(
         pool_param,
-        "mint_PositionInfo_view",
-        (self_address, params.tickLower_MintParams, params.tickUpper_MintParams, liquidity)
+        "mint_burn_PositionInfo_view",
+        (true, self_address, params.tickLower_MintParams, params.tickUpper_MintParams, liquidity)
     ): INVALID_OPERATION;
     const pack_data: MintCallbackData = {poolKey_param; caller; params.amount0Min_MintParams; params.amount1Min_MintParams};
     transfer 0tz to pool_param call mint<address * int * int * nat * bytes>((
@@ -775,7 +775,7 @@ entry mint(params: MintParams)
     const tokenId = nextId_;
     nextId_ += 1;
     // entry mint_ (tow : address, tid : nat) {
-    do_require(is_not_paused(), "ERR");
+    do_require(is_not_paused(), INVALID_OPERATION);
     ledger.add({ ltokenid = tokenId; lowner = params.recipient_MintParams });
     // }
 
@@ -878,7 +878,7 @@ entry increaseLiquidity(params: IncreaseLiquidityParams)
     //     nat /* amount1 */
     // )
 {
-    do_require(checkDeadline(params.deadline_IncLp), "ERR");
+    do_require(checkDeadline(params.deadline_IncLp), INVALID_OPERATION);
     // This is storage, so, it shold be stored again.
     var position: Position = positions_[params.tokenId_IncLp].position_;
     // PoolAddress.PoolKey memory poolKey = poolIdToPoolKey[position.poolId];
@@ -890,7 +890,7 @@ entry increaseLiquidity(params: IncreaseLiquidityParams)
         (poolKey_param.token0_PoolKey, poolKey_param.token1_PoolKey, poolKey_param.fee_PoolKey)
     ): INVALID_OPERATION;
 
-    // IUniswapV3Pool pool;
+    // IKodexV3Pool pool;
     // (liquidity, amount0, amount1, pool) = addLiquidity(
     //     AddLiquidityParams({
     //         token0: poolKey.token0,
@@ -913,7 +913,7 @@ entry increaseLiquidity(params: IncreaseLiquidityParams)
     //         uint128 liquidity,
     //         uint256 amount0,
     //         uint256 amount1,
-    //         IUniswapV3Pool pool
+    //         IKodexV3Pool pool
     //     )
     // {
 
@@ -945,8 +945,8 @@ entry increaseLiquidity(params: IncreaseLiquidityParams)
     // }
     const positionInfo_param ?= call_view<PositionInfo>(
         pool_param,
-        "mint_PositionInfo_view",
-        (self_address, position.tickLower_Pos, position.tickUpper_Pos, liquidity)
+        "mint_burn_PositionInfo_view",
+        (true, self_address, position.tickLower_Pos, position.tickUpper_Pos, liquidity)
     ): INVALID_OPERATION;
     const pack_data: MintCallbackData = {poolKey_param; caller; params.amount0Min_IncLp; params.amount1Min_IncLp};
     transfer 0tz to pool_param call mint<address * int * int * nat * bytes>((
@@ -961,7 +961,7 @@ entry increaseLiquidity(params: IncreaseLiquidityParams)
     const tokenId = nextId_;
     nextId_ += 1;
     // entry mint_ (tow : address, tid : nat) {
-    do_require(is_not_paused(), "ERR");
+    do_require(is_not_paused(), INVALID_OPERATION);
     ledger.add({ ltokenid = tokenId; lowner = self_address });
     // }
 
@@ -1013,14 +1013,14 @@ entry decreaseLiquidity(params: DecreaseLiquidityParams)
     //     nat /* amount1 */
     // )
 {
-    do_require(checkDeadline(params.deadline_DecLp), "ERR");
-    do_require(isAuthorizedForToken(params.tokenId_DecLp), "ERR");
-    do_require(params.liquidity_DecLp > 0, "ERR");
+    do_require(checkDeadline(params.deadline_DecLp), INVALID_OPERATION);
+    do_require(isAuthorizedForToken(params.tokenId_DecLp), INVALID_OPERATION);
+    do_require(params.liquidity_DecLp > 0, INVALID_OPERATION);
     // This is storage, so, it shold be stored again.
     const position: Position = positions_[params.tokenId_DecLp].position_;
 
     const positionLiquidity = position.liquidity_Pos;
-    do_require(positionLiquidity >= params.liquidity_DecLp, "ERR");
+    do_require(positionLiquidity >= params.liquidity_DecLp, INVALID_OPERATION);
 
     const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
     const pool_param ?= call_view<address>(
@@ -1036,8 +1036,8 @@ entry decreaseLiquidity(params: DecreaseLiquidityParams)
     const amount1 = retVal_burn[1];
     const positionInfo_param ?= call_view<PositionInfo>(
         pool_param,
-        "burn_PositionInfo_view",
-        (position.tickLower_Pos, position.tickUpper_Pos, params.liquidity_DecLp)
+        "mint_burn_PositionInfo_view",
+        (false, self_address, position.tickLower_Pos, position.tickUpper_Pos, params.liquidity_DecLp)
     ): INVALID_OPERATION;
     transfer 0tz to pool_param call burn<int * int * nat>((position.tickLower_Pos, position.tickUpper_Pos, params.liquidity_DecLp));
 
@@ -1089,8 +1089,8 @@ entry collect(params: CollectParams)
     //     nat /* amount1 */
     // )
 {
-    do_require(isAuthorizedForToken(params.tokenId_CollectParam), "ERR");
-    do_require((params.amount0Max_CollectParam > 0) or (params.amount1Max_CollectParam > 0), "ERR");
+    do_require(isAuthorizedForToken(params.tokenId_CollectParam), INVALID_OPERATION);
+    do_require((params.amount0Max_CollectParam > 0) or (params.amount1Max_CollectParam > 0), INVALID_OPERATION);
     // allow collecting to the nft position manager address with address 0
     // address recipient = params.recipient == address(0) ? address(this) : params.recipient;
     var recipient_param: address = params.recipient_CollectParam;
@@ -1102,7 +1102,7 @@ entry collect(params: CollectParams)
     // PoolAddress.PoolKey memory poolKey = poolIdToPoolKey[position.poolId];
     const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
 
-    // IUniswapV3Pool pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
+    // IKodexV3Pool pool = IKodexV3Pool(PoolAddress.computeAddress(factory, poolKey));
     const pool_param ?= call_view<address>(
         factory, 
         "computeAddress", 
@@ -1117,8 +1117,8 @@ entry collect(params: CollectParams)
     if (position.liquidity_Pos > 0) then begin
         const positionInfo_param ?= call_view<PositionInfo>(
             pool_param,
-            "burn_PositionInfo_view",
-            (position.tickLower_Pos, position.tickUpper_Pos, 0)
+            "mint_burn_PositionInfo_view",
+            (false, self_address, position.tickLower_Pos, position.tickUpper_Pos, 0)
         ): INVALID_OPERATION;
         // pool.burn(position.tickLower_Pos, position.tickUpper_Pos, 0);
         transfer 0tz to pool_param call burn<int * int * nat>((position.tickLower_Pos, position.tickUpper_Pos, 0));
@@ -1175,7 +1175,7 @@ entry collect(params: CollectParams)
 entry burn(tokenId: nat) 
 // external payable override isAuthorizedForToken(tokenId) 
 {
-    do_require(isAuthorizedForToken(tokenId), "ERR");
+    do_require(isAuthorizedForToken(tokenId), INVALID_OPERATION);
     // This is storage, so, it shold be stored again.
     // Position storage position = positions_[tokenId];
     const position: Position = positions_[tokenId].position_;
@@ -1188,7 +1188,7 @@ entry burn(tokenId: nat)
     // entry burn(tid : nat) {
     // no transfer
     const token_owner ?= ledger[tokenId]?.lowner : FA2_TOKEN_UNDEFINED;
-    do_require(is_not_paused(), "ERR");
+    do_require(is_not_paused(), INVALID_OPERATION);
     do_require(token_owner = caller, FA2_NOT_OWNER);
     ledger.remove(tokenId);
     token_metadata.remove(tokenId);
@@ -1212,7 +1212,7 @@ view getApproved(tokenId: nat)
 : address {
     // require(_exists(tokenId), 'ERC721: approved query for nonexistent token');
     do_require(is_some(ledger[tokenId]?.lowner), FA2_TOKEN_UNDEFINED);
-    do_require(operator.contains((positions_[tokenId].position_.operator_Pos, tokenId, ledger[tokenId].lowner)), "ERR");
+    do_require(operator.contains((positions_[tokenId].position_.operator_Pos, tokenId, ledger[tokenId].lowner)), INVALID_OPERATION);
 
     return positions_[tokenId].position_.operator_Pos
 }
