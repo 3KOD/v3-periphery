@@ -946,6 +946,31 @@ entry burn(tokenId: nat) {
     ledger.remove(tokenId);
     token_metadata.remove(tokenId)
 }
+/// @inheritdoc IPoolInitializer
+entry initializePoolIfNecessary(
+    token0_param: address,
+    token1_param: address,
+    fee_param: nat,
+    sqrtPriceX96_param: nat
+) {
+    do_require(token0_param < token1_param, INVALID_OPERATION);
+    const pool_param: address ?= call_view<address>(factory, "computeAddress", (token0_param, token1_param, fee_param)): INVALID_OPERATION;
+    const slot0_param ?= call_view<Slot0>(pool_param, "getSlot0", Unit) : INVALID_OPERATION;
+    if (slot0_param.sqrtPriceX96 = 0) then 
+        transfer 0tz to pool_param call initialize< nat>(sqrtPriceX96_param)
+}
+
+entry createPoolIfNecessary(
+    token0_param: address,
+    token1_param: address,
+    fee_param: nat
+) {
+    do_require(token0_param < token1_param, INVALID_OPERATION);
+    const pool_param: option<address> = call_view<address>(factory, "computeAddress", (token0_param, token1_param, fee_param));
+
+    if (is_none(pool_param)) then
+        transfer 0tz to factory call createPool<address * address * nat>((token0_param, token1_param, fee_param))
+}
 
 /// @inheritdoc IERC721
 view getApproved(tokenId: nat) : address {
