@@ -626,11 +626,11 @@ record PositionInfo {
 } as ((liquidity, (feeGrowthInside0LastX128, feeGrowthInside1LastX128), (tokensOwed0, tokensOwed1)))
 
 /// @inheritdoc INonfungiblePositionManager
-entry mint(params: MintParams) {
-    do_require(checkDeadline(params.deadline_MintParams), INVALID_OPERATION);
+entry mint(param: MintParams) {
+    do_require(checkDeadline(param.deadline_MintParams), INVALID_OPERATION);
 
     // /// @notice Add liquidity to an initialized pool
-    const poolKey_param: PoolKey = {params.token0_MintParams; params.token1_MintParams; params.fee_MintParams};
+    const poolKey_param: PoolKey = {param.token0_MintParams; param.token1_MintParams; param.fee_MintParams};
 
     const pool_param ?= call_view<address>(
         factory, 
@@ -641,15 +641,15 @@ entry mint(params: MintParams) {
     // compute the liquidity amount
     const slot0_val ?= call_view<Slot0>(pool_param, "getSlot0", Unit): INVALID_OPERATION;
     const sqrtPriceX96_param = slot0_val.sqrtPriceX96;
-    const sqrtRatioAX96 ?= call_view<nat>(kodexV3lib, "tickMathGetSqrtRatioAtTick", params.tickLower_MintParams): INVALID_OPERATION;
-    const sqrtRatioBX96 ?= call_view<nat>(kodexV3lib, "tickMathGetSqrtRatioAtTick", params.tickUpper_MintParams): INVALID_OPERATION;
+    const sqrtRatioAX96 ?= call_view<nat>(kodexV3lib, "tickMathGetSqrtRatioAtTick", param.tickLower_MintParams): INVALID_OPERATION;
+    const sqrtRatioBX96 ?= call_view<nat>(kodexV3lib, "tickMathGetSqrtRatioAtTick", param.tickUpper_MintParams): INVALID_OPERATION;
 
     const liquidity: nat = getLiquidityForAmounts(
         sqrtPriceX96_param,
         sqrtRatioAX96,
         sqrtRatioBX96,
-        params.amount0Desired_MintParams,
-        params.amount1Desired_MintParams
+        param.amount0Desired_MintParams,
+        param.amount1Desired_MintParams
     );
 
     // this action is performed in mint of pool contract
@@ -657,20 +657,20 @@ entry mint(params: MintParams) {
     const positionInfo_param ?= call_view<PositionInfo>(
         pool_param,
         "mint_burn_PositionInfo_view",
-        (true, self_address, params.tickLower_MintParams, params.tickUpper_MintParams, liquidity)
+        (true, self_address, param.tickLower_MintParams, param.tickUpper_MintParams, liquidity)
     ): INVALID_OPERATION;
-    const pack_data: MintCallbackData = {poolKey_param; caller; params.amount0Min_MintParams; params.amount1Min_MintParams};
+    const pack_data: MintCallbackData = {poolKey_param; caller; param.amount0Min_MintParams; param.amount1Min_MintParams};
     transfer 0tz to pool_param call mint<address * int * int * nat * bytes>((
         self_address,
-        params.tickLower_MintParams,
-        params.tickUpper_MintParams,
+        param.tickLower_MintParams,
+        param.tickUpper_MintParams,
         liquidity,
         pack(pack_data)));
 
     const tokenId = nextId_;
     nextId_ += 1;
     do_require(is_not_paused(), INVALID_OPERATION);
-    ledger.add({ ltokenid = tokenId; lowner = params.recipient_MintParams });
+    ledger.add({ ltokenid = tokenId; lowner = param.recipient_MintParams });
 
     const feeGrowthInside0LastX128_param: nat = positionInfo_param.feeGrowthInside0LastX128_PosInfo;
     const feeGrowthInside1LastX128_param: nat = positionInfo_param.feeGrowthInside1LastX128_PosInfo;
@@ -682,7 +682,7 @@ entry mint(params: MintParams) {
         poolId_param := nextPoolId_;
         nextPoolId_ += 1;
         poolIds[pool_param].poolId := poolId_param;
-        poolIdToPoolKey[poolId_param].poolKey := {params.token0_MintParams; params.token1_MintParams; params.fee_MintParams};
+        poolIdToPoolKey[poolId_param].poolKey := {param.token0_MintParams; param.token1_MintParams; param.fee_MintParams};
     end;
 
 
@@ -691,8 +691,8 @@ entry mint(params: MintParams) {
         // address(0);
         self_address; // TODO+
         poolId_param;
-        params.tickLower_MintParams;
-        params.tickUpper_MintParams;
+        param.tickLower_MintParams;
+        param.tickUpper_MintParams;
         liquidity;
         feeGrowthInside0LastX128_param;
         feeGrowthInside1LastX128_param;
@@ -733,10 +733,10 @@ record IncreaseLiquidityParams {
 }
 
 /// @inheritdoc INonfungiblePositionManager
-entry increaseLiquidity(params: IncreaseLiquidityParams) {
-    do_require(checkDeadline(params.deadline_IncLp), INVALID_OPERATION);
+entry increaseLiquidity(param: IncreaseLiquidityParams) {
+    do_require(checkDeadline(param.deadline_IncLp), INVALID_OPERATION);
     // This is storage, so, it shold be stored again.
-    var position: Position = positions_[params.tokenId_IncLp].position_;
+    var position: Position = positions_[param.tokenId_IncLp].position_;
     // PoolAddress.PoolKey memory poolKey = poolIdToPoolKey[position.poolId];
     const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
 
@@ -755,8 +755,8 @@ entry increaseLiquidity(params: IncreaseLiquidityParams) {
         sqrtPriceX96_param,
         sqrtRatioAX96,
         sqrtRatioBX96,
-        params.amount0Desired_IncLp,
-        params.amount1Desired_IncLp
+        param.amount0Desired_IncLp,
+        param.amount1Desired_IncLp
     );
 
     const positionInfo_param ?= call_view<PositionInfo>(
@@ -764,9 +764,9 @@ entry increaseLiquidity(params: IncreaseLiquidityParams) {
         "mint_burn_PositionInfo_view",
         (true, self_address, position.tickLower_Pos, position.tickUpper_Pos, liquidity)
     ): INVALID_OPERATION;
-    const pack_data: MintCallbackData = {poolKey_param; caller; params.amount0Min_IncLp; params.amount1Min_IncLp};
+    const pack_data: MintCallbackData = {poolKey_param; caller; param.amount0Min_IncLp; param.amount1Min_IncLp};
     // this action is performed in mint of pool contract
-    // require((amount0 >= params.amount0Min) and (amount1 >= params.amount1Min), "Price slippage check");
+    // require((amount0 >= param.amount0Min) and (amount1 >= param.amount1Min), "Price slippage check");
     transfer 0tz to pool_param call mint<address * int * int * nat * bytes>((
         self_address,
         position.tickLower_Pos,
@@ -794,9 +794,9 @@ entry increaseLiquidity(params: IncreaseLiquidityParams) {
     position.liquidity_Pos += liquidity;
 
     // This is storage, so, it is stored here again.
-    positions_[params.tokenId_IncLp].position_ := position;
+    positions_[param.tokenId_IncLp].position_ := position;
 
-    emit<IncreaseLiquidity>({params.tokenId_IncLp; liquidity})
+    emit<IncreaseLiquidity>({param.tokenId_IncLp; liquidity})
 }
 
 record DecreaseLiquidityParams {
@@ -808,15 +808,15 @@ record DecreaseLiquidityParams {
 }
 
 /// @inheritdoc INonfungiblePositionManager
-entry decreaseLiquidity(params: DecreaseLiquidityParams) {
-    do_require(checkDeadline(params.deadline_DecLp), INVALID_OPERATION);
-    do_require(isAuthorizedForToken(params.tokenId_DecLp), INVALID_OPERATION);
-    do_require(params.liquidity_DecLp > 0, INVALID_OPERATION);
+entry decreaseLiquidity(param: DecreaseLiquidityParams) {
+    do_require(checkDeadline(param.deadline_DecLp), INVALID_OPERATION);
+    do_require(isAuthorizedForToken(param.tokenId_DecLp), INVALID_OPERATION);
+    do_require(param.liquidity_DecLp > 0, INVALID_OPERATION);
     // This is storage, so, it shold be stored again.
-    const position: Position = positions_[params.tokenId_DecLp].position_;
+    const position: Position = positions_[param.tokenId_DecLp].position_;
 
     const positionLiquidity = position.liquidity_Pos;
-    do_require(positionLiquidity >= params.liquidity_DecLp, INVALID_OPERATION);
+    do_require(positionLiquidity >= param.liquidity_DecLp, INVALID_OPERATION);
 
     const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
     const pool_param ?= call_view<address>(
@@ -826,17 +826,17 @@ entry decreaseLiquidity(params: DecreaseLiquidityParams) {
     ): INVALID_OPERATION;
 
     // guess return values
-    const retVal_burn ?= call_view<nat * nat>(kodexV3lib, "burn", (position.tickLower_Pos, position.tickUpper_Pos, params.liquidity_DecLp, pool_param)): INVALID_OPERATION;
+    const retVal_burn ?= call_view<nat * nat>(kodexV3lib, "burn", (position.tickLower_Pos, position.tickUpper_Pos, param.liquidity_DecLp, pool_param)): INVALID_OPERATION;
     const amount0 = retVal_burn[0];
     const amount1 = retVal_burn[1];
     const positionInfo_param ?= call_view<PositionInfo>(
         pool_param,
         "mint_burn_PositionInfo_view",
-        (false, self_address, position.tickLower_Pos, position.tickUpper_Pos, params.liquidity_DecLp)
+        (false, self_address, position.tickLower_Pos, position.tickUpper_Pos, param.liquidity_DecLp)
     ): INVALID_OPERATION;
-    transfer 0tz to pool_param call burn<int * int * nat>((position.tickLower_Pos, position.tickUpper_Pos, params.liquidity_DecLp));
+    transfer 0tz to pool_param call burn<int * int * nat>((position.tickLower_Pos, position.tickUpper_Pos, param.liquidity_DecLp));
 
-    do_require((amount0 >= params.amount0Min_DecLp) and (amount1 >= params.amount1Min_DecLp), "Price slippage check");
+    do_require((amount0 >= param.amount0Min_DecLp) and (amount1 >= param.amount1Min_DecLp), "Price slippage check");
 
     const feeGrowthInside0LastX128_param: nat = positionInfo_param.feeGrowthInside0LastX128_PosInfo;
     const feeGrowthInside1LastX128_param: nat = positionInfo_param.feeGrowthInside1LastX128_PosInfo;
@@ -848,12 +848,12 @@ entry decreaseLiquidity(params: DecreaseLiquidityParams) {
 
     position.feeGrowthInside0LastX128_Pos := feeGrowthInside0LastX128_param;
     position.feeGrowthInside1LastX128_Pos := feeGrowthInside1LastX128_param;
-    // subtraction is safe because we checked positionLiquidity is gte params.liquidity
-    position.liquidity_Pos ?:= int_to_nat(positionLiquidity - params.liquidity_DecLp) : INVALID_OPERATION;
+    // subtraction is safe because we checked positionLiquidity is gte param.liquidity
+    position.liquidity_Pos ?:= int_to_nat(positionLiquidity - param.liquidity_DecLp) : INVALID_OPERATION;
     // This is storage, so, it is stored here again.
-    positions_[params.tokenId_DecLp].position_ := position;
+    positions_[param.tokenId_DecLp].position_ := position;
 
-    emit<DecreaseLiquidity>({params.tokenId_DecLp; params.liquidity_DecLp; amount0; amount1})
+    emit<DecreaseLiquidity>({param.tokenId_DecLp; param.liquidity_DecLp; amount0; amount1})
 }
 
 record CollectParams {
@@ -864,16 +864,16 @@ record CollectParams {
 }
 
 /// @inheritdoc INonfungiblePositionManager
-entry collect(params: CollectParams) {
-    do_require(isAuthorizedForToken(params.tokenId_CollectParam), INVALID_OPERATION);
-    do_require((params.amount0Max_CollectParam > 0) or (params.amount1Max_CollectParam > 0), INVALID_OPERATION);
+entry collect(param: CollectParams) {
+    do_require(isAuthorizedForToken(param.tokenId_CollectParam), INVALID_OPERATION);
+    do_require((param.amount0Max_CollectParam > 0) or (param.amount1Max_CollectParam > 0), INVALID_OPERATION);
     // allow collecting to the nft position manager address with address 0
-    // address recipient = params.recipient == address(0) ? address(this) : params.recipient;
-    var recipient_param: address = params.recipient_CollectParam;
+    // address recipient = param.recipient == address(0) ? address(this) : param.recipient;
+    var recipient_param: address = param.recipient_CollectParam;
 
-    // Position storage position = positions_[params.tokenId_CollectParam];
+    // Position storage position = positions_[param.tokenId_CollectParam];
     // This is storage, so, it shold be stored again.
-    const position: Position = positions_[params.tokenId_CollectParam].position_;
+    const position: Position = positions_[param.tokenId_CollectParam].position_;
 
     const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
 
@@ -907,8 +907,8 @@ entry collect(params: CollectParams) {
     end;
 
     // compute the arguments to give to the pool#collect method
-    const amount0Collect: nat = (params.amount1Max_CollectParam > tokensOwed1) ? tokensOwed1 : params.amount1Max_CollectParam;
-    const amount1Collect: nat = (params.amount1Max_CollectParam > tokensOwed1) ? tokensOwed1 : params.amount1Max_CollectParam;
+    const amount0Collect: nat = (param.amount1Max_CollectParam > tokensOwed1) ? tokensOwed1 : param.amount1Max_CollectParam;
+    const amount1Collect: nat = (param.amount1Max_CollectParam > tokensOwed1) ? tokensOwed1 : param.amount1Max_CollectParam;
 
     // the actual amounts collected are returned
     transfer 0tz to pool_param call collect<address * int * int * nat * nat>((
@@ -924,9 +924,9 @@ entry collect(params: CollectParams) {
     position.tokensOwed0_Pos ?:= int_to_nat(tokensOwed0 - amount0Collect) : INVALID_OPERATION;
     position.tokensOwed1_Pos ?:= int_to_nat(tokensOwed1 - amount1Collect) : INVALID_OPERATION;
     // This is storage, so, it is stored here again.
-    positions_[params.tokenId_CollectParam].position_ := position;
+    positions_[param.tokenId_CollectParam].position_ := position;
 
-    emit<Collect>({params.tokenId_CollectParam; recipient_param; amount0Collect; amount1Collect});
+    emit<Collect>({param.tokenId_CollectParam; recipient_param; amount0Collect; amount1Collect});
 }
 
 /// @inheritdoc INonfungiblePositionManager
