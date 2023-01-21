@@ -562,18 +562,18 @@ view getLiquidityForAmount0(
 /// @param sqrtRatioBX96 A sqrt price representing the second tick boundary
 /// @param amount1 The amount1 being sent in
 /// @return liquidity The amount of returned liquidity
-function getLiquidityForAmount1(
+view getLiquidityForAmount1(
     sqrtRatioAX96: nat,
     sqrtRatioBX96: nat,
     amount1: nat
 ) : nat {
-    var sqrtRatioAX96_param = sqrtRatioAX96;
-    var sqrtRatioBX96_param = sqrtRatioBX96;
+    var sqrtRatioAX96_param: nat = sqrtRatioAX96;
+    var sqrtRatioBX96_param: nat = sqrtRatioBX96;
     if (sqrtRatioAX96 > sqrtRatioBX96) then begin
         sqrtRatioAX96_param := sqrtRatioBX96; 
         sqrtRatioBX96_param := sqrtRatioAX96;
     end;
-    const div_Val ?= int_to_nat(sqrtRatioBX96_param - sqrtRatioAX96_param) : INVALID_OPERATION;
+    const div_Val ?= int_to_nat(sqrtRatioBX96_param - sqrtRatioAX96_param) : "PERROR12";
     return (amount1 * Q96 div div_Val)
 }
 
@@ -600,16 +600,16 @@ function getLiquidityForAmounts(
     end;
 
     if (sqrtRatioX96 <= sqrtRatioAX96_param) then begin
-        const retVal ?= call_view<nat>(self_address, "getLiquidityForAmount0", (sqrtRatioAX96_param, sqrtRatioBX96_param, amount0)): INVALID_OPERATION;
+        const retVal ?= call_view<nat>(self_address, "getLiquidityForAmount0", (sqrtRatioAX96_param, sqrtRatioBX96_param, amount0)): "PERROR8";
         return retVal
     end else if (sqrtRatioX96 < sqrtRatioBX96_param) then begin
-        const liquidity0 ?= call_view<nat>(self_address, "getLiquidityForAmount0", (sqrtRatioX96, sqrtRatioBX96_param, amount0)): INVALID_OPERATION;
-        const liquidity1 ?= call_view<nat>(self_address, "getLiquidityForAmount1", (sqrtRatioAX96_param, sqrtRatioX96, amount1)): INVALID_OPERATION;
+        const liquidity0 ?= call_view<nat>(self_address, "getLiquidityForAmount0", (sqrtRatioX96, sqrtRatioBX96_param, amount0)): "PERROR9";
+        const liquidity1 ?= call_view<nat>(self_address, "getLiquidityForAmount1", (sqrtRatioAX96_param, sqrtRatioX96, amount1)): "PERROR10";
 
         const retVal = (liquidity0 < liquidity1) ? liquidity0 : liquidity1;
         return retVal
     end else begin        
-        const retVal ?= call_view<nat>(self_address, "getLiquidityForAmount1", (sqrtRatioAX96_param, sqrtRatioBX96_param, amount1)): INVALID_OPERATION;
+        const retVal ?= call_view<nat>(self_address, "getLiquidityForAmount1", (sqrtRatioAX96_param, sqrtRatioBX96_param, amount1)): "PERROR11";
         return retVal
     end
 }
@@ -627,7 +627,7 @@ record PositionInfo {
 
 /// @inheritdoc INonfungiblePositionManager
 entry mint(param: MintParams) {
-    do_require(checkDeadline(param.deadline_MintParams), INVALID_OPERATION);
+    do_require(checkDeadline(param.deadline_MintParams), "PERROR1");
 
     // /// @notice Add liquidity to an initialized pool
     const poolKey_param: PoolKey = {param.token0_MintParams; param.token1_MintParams; param.fee_MintParams};
@@ -636,13 +636,13 @@ entry mint(param: MintParams) {
         factory, 
         "computeAddress", 
         (poolKey_param.token0_PoolKey, poolKey_param.token1_PoolKey, poolKey_param.fee_PoolKey)
-    ): INVALID_OPERATION;
+    ): "PERROR2";
 
     // compute the liquidity amount
-    const slot0_val ?= call_view<Slot0>(pool_param, "getSlot0", Unit): INVALID_OPERATION;
+    const slot0_val ?= call_view<Slot0>(pool_param, "getSlot0", Unit): "PERROR3";
     const sqrtPriceX96_param = slot0_val.sqrtPriceX96;
-    const sqrtRatioAX96 ?= call_view<nat>(kodexV3lib, "tickMathGetSqrtRatioAtTick", param.tickLower_MintParams): INVALID_OPERATION;
-    const sqrtRatioBX96 ?= call_view<nat>(kodexV3lib, "tickMathGetSqrtRatioAtTick", param.tickUpper_MintParams): INVALID_OPERATION;
+    const sqrtRatioAX96 ?= call_view<nat>(kodexV3lib, "tickMathGetSqrtRatioAtTick", param.tickLower_MintParams): "PERROR4";
+    const sqrtRatioBX96 ?= call_view<nat>(kodexV3lib, "tickMathGetSqrtRatioAtTick", param.tickUpper_MintParams): "PERROR5";
 
     const liquidity: nat = getLiquidityForAmounts(
         sqrtPriceX96_param,
@@ -658,7 +658,8 @@ entry mint(param: MintParams) {
         pool_param,
         "mint_burn_PositionInfo_view",
         (true, self_address, param.tickLower_MintParams, param.tickUpper_MintParams, liquidity)
-    ): INVALID_OPERATION;
+    ): "PERROR6";
+
     const pack_data: MintCallbackData = {poolKey_param; caller; param.amount0Min_MintParams; param.amount1Min_MintParams};
     transfer 0tz to pool_param call mint<address * int * int * nat * bytes>((
         self_address,
@@ -669,7 +670,7 @@ entry mint(param: MintParams) {
 
     const tokenId = nextId_;
     nextId_ += 1;
-    do_require(is_not_paused(), INVALID_OPERATION);
+    do_require(is_not_paused(), "PERROR7");
     ledger.add({ ltokenid = tokenId; lowner = param.recipient_MintParams });
 
     const feeGrowthInside0LastX128_param: nat = positionInfo_param.feeGrowthInside0LastX128_PosInfo;
@@ -677,14 +678,13 @@ entry mint(param: MintParams) {
 
     // idempotent set
     /// @dev Caches a pool key
-    var poolId_param: nat = poolIds[pool_param].poolId;
+    var poolId_param: nat = poolIds[pool_param] ? the.poolId : 0;
     if (poolId_param = 0) then begin
         poolId_param := nextPoolId_;
         nextPoolId_ += 1;
         poolIds[pool_param].poolId := poolId_param;
         poolIdToPoolKey[poolId_param].poolKey := {param.token0_MintParams; param.token1_MintParams; param.fee_MintParams};
     end;
-
 
     positions_[tokenId].position_ := {
         // 0;
@@ -765,8 +765,6 @@ entry increaseLiquidity(param: IncreaseLiquidityParams) {
         (true, self_address, position.tickLower_Pos, position.tickUpper_Pos, liquidity)
     ): INVALID_OPERATION;
     const pack_data: MintCallbackData = {poolKey_param; caller; param.amount0Min_IncLp; param.amount1Min_IncLp};
-    // this action is performed in mint of pool contract
-    // require((amount0 >= param.amount0Min) and (amount1 >= param.amount1Min), "Price slippage check");
     transfer 0tz to pool_param call mint<address * int * int * nat * bytes>((
         self_address,
         position.tickLower_Pos,
@@ -809,14 +807,14 @@ record DecreaseLiquidityParams {
 
 /// @inheritdoc INonfungiblePositionManager
 entry decreaseLiquidity(param: DecreaseLiquidityParams) {
-    do_require(checkDeadline(param.deadline_DecLp), INVALID_OPERATION);
-    do_require(isAuthorizedForToken(param.tokenId_DecLp), INVALID_OPERATION);
-    do_require(param.liquidity_DecLp > 0, INVALID_OPERATION);
+    do_require(checkDeadline(param.deadline_DecLp), "INVALID_OPERATION_checkDeadline");
+    do_require(isAuthorizedForToken(param.tokenId_DecLp), "INVALID_OPERATION_isAuthorizedForToken");
+    do_require(param.liquidity_DecLp > 0, "INVALID_OPERATION_param.liquidity_DecLp");
     // This is storage, so, it shold be stored again.
     const position: Position = positions_[param.tokenId_DecLp].position_;
 
     const positionLiquidity = position.liquidity_Pos;
-    do_require(positionLiquidity >= param.liquidity_DecLp, INVALID_OPERATION);
+    do_require(positionLiquidity >= param.liquidity_DecLp, "INVALID_OPERATION_positionLiquidity");
 
     const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
     const pool_param ?= call_view<address>(
@@ -824,9 +822,11 @@ entry decreaseLiquidity(param: DecreaseLiquidityParams) {
         "computeAddress", 
         (poolKey_param.token0_PoolKey, poolKey_param.token1_PoolKey, poolKey_param.fee_PoolKey)
     ): INVALID_OPERATION;
+    
 
     // guess return values
     const retVal_burn ?= call_view<nat * nat>(kodexV3lib, "burn", (position.tickLower_Pos, position.tickUpper_Pos, param.liquidity_DecLp, pool_param)): INVALID_OPERATION;
+    do_require(false, "decreaseLiquidity_00");
     const amount0 = retVal_burn[0];
     const amount1 = retVal_burn[1];
     const positionInfo_param ?= call_view<PositionInfo>(
@@ -953,7 +953,7 @@ entry initializePoolIfNecessary(
     fee_param: nat,
     sqrtPriceX96_param: nat
 ) {
-    do_require(token0_param < token1_param, INVALID_OPERATION);
+    // do_require(token0_param < token1_param, INVALID_OPERATION);
     const pool_param: address ?= call_view<address>(factory, "computeAddress", (token0_param, token1_param, fee_param)): INVALID_OPERATION;
     const slot0_param ?= call_view<Slot0>(pool_param, "getSlot0", Unit) : INVALID_OPERATION;
     if (slot0_param.sqrtPriceX96 = 0) then 
@@ -965,11 +965,11 @@ entry createPoolIfNecessary(
     token1_param: address,
     fee_param: nat
 ) {
-    do_require(token0_param < token1_param, INVALID_OPERATION);
-    const pool_param: option<address> = call_view<address>(factory, "computeAddress", (token0_param, token1_param, fee_param));
+    // do_require(token0_param < token1_param, "token0 > token1");
+    // const pool_param: option<address> = call_view<address>(factory, "computeAddress", (token0_param, token1_param, fee_param));
 
-    if (is_none(pool_param)) then
-        transfer 0tz to factory call createPool<address * address * nat>((token0_param, token1_param, fee_param))
+    // if (is_none(pool_param)) then
+    transfer 0tz to factory call createPool<address * address * nat>((token0_param, token1_param, fee_param))
 }
 
 /// @inheritdoc IERC721
@@ -978,4 +978,25 @@ view getApproved(tokenId: nat) : address {
     do_require(operator.contains((positions_[tokenId].position_.operator_Pos, tokenId, ledger[tokenId].lowner)), INVALID_OPERATION);
 
     return positions_[tokenId].position_.operator_Pos
+}
+
+entry kodexV3MintCallback(
+    /* uint256 */ amount0Owed: nat,
+    /* uint256 */ amount1Owed: nat,
+    /* bytes */ data: bytes
+) {
+    const decoded : MintCallbackData ?= unpack<MintCallbackData>(data) : INVALID_OPERATION;
+    const pool_param ?= call_view<address>(factory, "computeAddress", (
+        decoded.poolKey_MintData.token0_PoolKey, 
+        decoded.poolKey_MintData.token1_PoolKey, 
+        decoded.poolKey_MintData.fee_PoolKey
+    )): INVALID_OPERATION;
+    do_require(caller = pool_param, INVALID_OPERATION);
+
+    if (amount0Owed > 0) then 
+        transfer 0tz to decoded.poolKey_MintData.token0_PoolKey call %transfer<address * address * nat>((decoded.payer_MintData, caller, amount0Owed));
+    if (amount1Owed > 0) then 
+        transfer 0tz to decoded.poolKey_MintData.token1_PoolKey call %transfer<address * address * nat>((decoded.payer_MintData, caller, amount1Owed));
+
+    do_require((amount0Owed >= decoded.amount0Min_MintData) and (amount1Owed >= decoded.amount1Min_MintData), "Price slippage check")
 }
