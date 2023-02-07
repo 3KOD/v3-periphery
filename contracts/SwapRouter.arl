@@ -1,12 +1,17 @@
-archetype SwapRouter(const factory: address)
+archetype SwapRouter(const factory: address, const kodexV3lib: address)
 
 constant INVALID_OPERATION: string = "ERR"
 constant MIN_SQRT_RATIO: nat = 4295128739
 constant MAX_SQRT_RATIO: nat = 1461446703485210103287273052203988822378723970342
 
+enum token_type = 
+| tez_token<unit>
+| fa12<address>
+| fa20<address * nat>
+
 record ExactInputSingleParams {
-    tokenIn_InSParam: address;
-    tokenOut_InSParam: address;
+    tokenIn_InSParam: token_type;
+    tokenOut_InSParam: token_type;
     fee_InSParam: nat;
     recipient_InSParam: address;
     deadline_InSParam: date;
@@ -24,8 +29,8 @@ record ExactInputParams {
 }
 
 record ExactOutputSingleParams {
-    tokenIn_OutSParam: address;
-    tokenOut_OutSParam: address;
+    tokenIn_OutSParam: token_type;
+    tokenOut_OutSParam: token_type;
     fee_OutSParam: nat;
     recipient_OutSParam: address;
     deadline_OutSParam: date;
@@ -57,6 +62,34 @@ record SwapCallbackData {
     payer_SwapCallbackData: address;
 }
 
+record transfer_destination {
+  to_dest           : address;
+  token_id_dest     : nat;
+  token_amount_dest : nat
+} as ((%to_, (token_id, amount)))
+
+record transfer_param {
+  tp_from : address;
+  tp_txs  : list<transfer_destination>;
+} as ((%from_, %txs))
+
+entry tokenTransferFromTo(token: token_type, sender: address, recipient: address, amount: nat) {
+    called by self_address
+    effect {
+        match token with
+        | tez_token(tez_type) -> begin
+            transfer ((amount * 1tz) div 1_000_000) to recipient
+        end
+        | fa12(fa12_type) -> begin
+            transfer 0tz to fa12_type call %transfer<address * address * nat>((sender, recipient, amount));
+        end
+        | fa20(fa20_type_address, fa20_type_id) -> begin
+            transfer 0tz to fa20_type_address call %transfer<list<transfer_param>>([{sender; [{recipient; fa20_type_id; amount}]}]);
+        end
+        end
+    }
+}
+
 /// @inheritdoc IKodexV3SwapCallback
 entry kodexV3SwapCallback(
     amount0Delta: int,
@@ -68,9 +101,9 @@ entry kodexV3SwapCallback(
     // SwapCallbackData memory data = abi.decode(data_, (SwapCallbackData));
     const data: SwapCallbackData ?= unpack<SwapCallbackData>(data_) : INVALID_OPERATION;
     // (address tokenIn, address tokenOut, uint24 fee) = data.path.decodeFirstPool();
-    const decode_param ?= unpack<address * address * nat>(data.path_SwapCallbackData);
-    var tokenIn_param: address = decode_param[0];
-    const tokenOut_param: address = decode_param[1];
+    const decode_param ?= unpack<token_type * token_type * nat>(data.path_SwapCallbackData);
+    var tokenIn_param: token_type = decode_param[0];
+    const tokenOut_param: token_type = decode_param[1];
     const fee_param: nat = decode_param[2];
 
     const pool_param ?= call_view<address>(
@@ -80,14 +113,18 @@ entry kodexV3SwapCallback(
     ): INVALID_OPERATION;
     do_require(caller = pool_param, INVALID_OPERATION);
 
-    const isExactInput: bool = amount0Delta > 0 ? (tokenIn_param < tokenOut_param) : (tokenOut_param < tokenIn_param);
+    const compareIO: int ?= call_view<int>(kodexV3lib, "tokenCompare", (tokenIn_param, tokenOut_param)) : INVALID_OPERATION;
+    // const isExactInput: bool = amount0Delta > 0 ? (tokenIn_param < tokenOut_param) : (tokenOut_param < tokenIn_param);
+    const isExactInput: bool = amount0Delta > 0 ? (compareIO = (-1i)) : (compareIO = 1i);
     const amountToPay_int: int = amount0Delta > 0 ?  amount0Delta : amount1Delta;
     const amountToPay: nat ?= int_to_nat(amountToPay_int) : INVALID_OPERATION;
     if (isExactInput) then begin
-        transfer 0tz to tokenIn_param call %transfer<address * address * nat>((data.payer_SwapCallbackData, caller, amountToPay))
+        transfer 0tz to entry self.tokenTransferFromTo(tokenIn_param, data.payer_SwapCallbackData, caller, amountToPay)
+        // transfer 0tz to tokenIn_param call %transfer<address * address * nat>((data.payer_SwapCallbackData, caller, amountToPay))
     end else begin
         tokenIn_param := tokenOut_param;
-        transfer 0tz to tokenIn_param call %transfer<address * address * nat>((data.payer_SwapCallbackData, caller, amountToPay));
+        transfer 0tz to entry self.tokenTransferFromTo(tokenIn_param, data.payer_SwapCallbackData, caller, amountToPay);
+        // transfer 0tz to tokenIn_param call %transfer<address * address * nat>((data.payer_SwapCallbackData, caller, amountToPay));
         amountInCached := amountToPay
     end
 }
@@ -96,11 +133,13 @@ entry exactInputSingle(param: ExactInputSingleParams)
 {
     do_require(checkDeadline(param.deadline_InSParam), INVALID_OPERATION);
     
-    const tokenIn_param: address = param.tokenIn_InSParam;
-    const tokenOut_param: address = param.tokenOut_InSParam;
+    const tokenIn_param: token_type = param.tokenIn_InSParam;
+    const tokenOut_param: token_type = param.tokenOut_InSParam;
     const fee_param: nat = param.fee_InSParam;
 
-    var zeroForOne: bool = tokenIn_param < tokenOut_param;
+    const compareIO: int ?= call_view<int>(kodexV3lib, "tokenCompare", (tokenIn_param, tokenOut_param)) : INVALID_OPERATION;
+    // const zeroForOne: bool = tokenIn_param < tokenOut_param;
+    const zeroForOne: bool = (compareIO = (-1i));
     const poolAddress ?= call_view<address>(factory, "computeAddress", (tokenIn_param, tokenOut_param, fee_param)) : INVALID_OPERATION;
     const sqrtPriceLimitX96_int: int = (param.sqrtPriceLimitX96_InSParam = 0) ? (zeroForOne ? (MIN_SQRT_RATIO + 1i) : (MAX_SQRT_RATIO - 1)) : param.sqrtPriceLimitX96_InSParam;
     const sqrtPriceLimitX96_nat: nat ?= int_to_nat(sqrtPriceLimitX96_int) : INVALID_OPERATION;
@@ -131,11 +170,13 @@ entry exactOutputSingle(param: ExactOutputSingleParams)
 {
     do_require(checkDeadline(param.deadline_OutSParam), INVALID_OPERATION);
     
-    const tokenOut_param: address = param.tokenOut_OutSParam;
-    const tokenIn_param: address = param.tokenIn_OutSParam;
+    const tokenOut_param: token_type = param.tokenOut_OutSParam;
+    const tokenIn_param: token_type = param.tokenIn_OutSParam;
     const fee_param: nat = param.fee_OutSParam;
 
-    const zeroForOne: bool = (tokenIn_param < tokenOut_param);
+    const compareIO: int ?= call_view<int>(kodexV3lib, "tokenCompare", (tokenIn_param, tokenOut_param)) : INVALID_OPERATION;
+    // const zeroForOne: bool = (tokenIn_param < tokenOut_param);
+    const zeroForOne: bool = (compareIO = (-1i));
 
     const path_param: bytes = pack((tokenOut_param, tokenIn_param, fee_param));
     const pack_data: SwapCallbackData = {path_param; caller};

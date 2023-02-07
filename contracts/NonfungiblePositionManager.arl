@@ -14,6 +14,11 @@ constant Q96: nat = 1 <<| 96
 constant Q128: nat = 1 <<| 128
 constant MAX_UINT128: nat = 340282366920938463463374607431768211455
 
+enum token_type = 
+| tez_token<unit>
+| fa12<address>
+| fa20<address * nat>
+
 // constant name = "Kodex V3 Positions NFT-V1";
 // constant symbol = "KODOS";
 // constant nameHash = keccak256(bytes(name));
@@ -64,8 +69,8 @@ function checkDeadline(deadline: date): bool {
 
 /// @notice The identifying key of the pool
 record PoolKey {
-    token0_PoolKey: address;
-    token1_PoolKey: address;
+    token0_PoolKey: token_type;
+    token1_PoolKey: token_type;
     fee_PoolKey: nat; // uint24
 } as (((token0, token1), fee))
 
@@ -77,8 +82,8 @@ record MintCallbackData {
 }
 
 record AddLiquidityParams {
-    token0: address; // address;
-    token1: address; // address;
+    token0: token_type; // address;
+    token1: token_type; // address;
     fee: nat; // uint24;
     recipient: address; // address;
     tickLower: int; // int24;
@@ -481,8 +486,25 @@ entry permit_transfer (txs : list<transfer_param>, permit : option<key * signatu
   }
 }
 
+entry tokenTransferFromTo(token: token_type, sender: address, recipient_: address, amount: nat) {
+    called by self_address
+    effect {
+        match token with
+        | tez_token(tez_type) -> begin
+            transfer ((amount * 1tz) div 1_000_000) to recipient_
+        end
+        | fa12(fa12_type) -> begin
+            transfer 0tz to fa12_type call %transfer<address * address * nat>((sender, recipient_, amount));
+        end
+        | fa20(fa20_type_address, fa20_type_id) -> begin
+            transfer 0tz to fa20_type_address call %transfer<list<transfer_param>>([{sender; [{recipient_; fa20_type_id; amount}]}]);
+        end
+        end
+    }
+}
+
 /// @inheritdoc INonfungiblePositionManager
-view positions(tokenId: nat) : address * address * address * nat * int * int * nat * nat * nat * nat * nat {
+view positions(tokenId: nat) : address * token_type * token_type * nat * int * int * nat * nat * nat * nat * nat {
     const position: Position = positions_[tokenId].position_;
     do_require(position.poolId_Pos <> 0, "Invalid token ID");
     const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
@@ -503,8 +525,8 @@ view positions(tokenId: nat) : address * address * address * nat * int * int * n
 }
 
 record MintParams {
-    token0_MintParams: address; // address
-    token1_MintParams: address; // address
+    token0_MintParams: token_type; // address
+    token1_MintParams: token_type; // address
     fee_MintParams: nat; // uint24
     tickLower_MintParams: int; // int24
     tickUpper_MintParams: int; // int24
@@ -965,8 +987,8 @@ entry burn(tokenId: nat) {
 }
 /// @inheritdoc IPoolInitializer
 entry initializePoolIfNecessary(
-    token0_param: address,
-    token1_param: address,
+    token0_param: token_type,
+    token1_param: token_type,
     fee_param: nat,
     sqrtPriceX96_param: nat
 ) {
@@ -978,15 +1000,15 @@ entry initializePoolIfNecessary(
 }
 
 entry createPoolIfNecessary(
-    token0_param: address,
-    token1_param: address,
+    token0_param: token_type,
+    token1_param: token_type,
     fee_param: nat
 ) {
     // do_require(token0_param < token1_param, "token0 > token1");
     // const pool_param: option<address> = call_view<address>(factory, "computeAddress", (token0_param, token1_param, fee_param));
 
     // if (is_none(pool_param)) then
-    transfer 0tz to factory call createPool<address * address * nat>((token0_param, token1_param, fee_param))
+    transfer 0tz to factory call createPool<token_type * token_type * nat>((token0_param, token1_param, fee_param))
 }
 
 /// @inheritdoc IERC721
@@ -1011,9 +1033,11 @@ entry kodexV3MintCallback(
     do_require(caller = pool_param, INVALID_OPERATION);
 
     if (amount0Owed > 0) then 
-        transfer 0tz to decoded.poolKey_MintData.token0_PoolKey call %transfer<address * address * nat>((decoded.payer_MintData, caller, amount0Owed));
+        transfer 0tz to entry self.tokenTransferFromTo(decoded.poolKey_MintData.token0_PoolKey, decoded.payer_MintData, caller, amount0Owed);
+        // transfer 0tz to decoded.poolKey_MintData.token0_PoolKey call %transfer<address * address * nat>((decoded.payer_MintData, caller, amount0Owed));
     if (amount1Owed > 0) then 
-        transfer 0tz to decoded.poolKey_MintData.token1_PoolKey call %transfer<address * address * nat>((decoded.payer_MintData, caller, amount1Owed));
+        transfer 0tz to entry self.tokenTransferFromTo(decoded.poolKey_MintData.token1_PoolKey, decoded.payer_MintData, caller, amount1Owed);
+        // transfer 0tz to decoded.poolKey_MintData.token1_PoolKey call %transfer<address * address * nat>((decoded.payer_MintData, caller, amount1Owed));
 
     do_require((amount0Owed >= decoded.amount0Min_MintData) and (amount1Owed >= decoded.amount1Min_MintData), "Price slippage check")
 }
