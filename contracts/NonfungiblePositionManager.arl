@@ -832,55 +832,58 @@ record DecreaseLiquidityParams {
 
 /// @inheritdoc INonfungiblePositionManager
 entry decreaseLiquidity(param: DecreaseLiquidityParams) {
-    do_require(checkDeadline(param.deadline_DecLp), INVALID_OPERATION);
-    do_require(isAuthorizedForToken(param.tokenId_DecLp), INVALID_OPERATION);
-    do_require(param.liquidity_DecLp > 0, INVALID_OPERATION);
-    // This is storage, so, it shold be stored again.
-    const position: Position = positions_[param.tokenId_DecLp].position_;
+    no transfer
+    effect {
+        do_require(checkDeadline(param.deadline_DecLp), INVALID_OPERATION);
+        do_require(isAuthorizedForToken(param.tokenId_DecLp), INVALID_OPERATION);
+        do_require(param.liquidity_DecLp > 0, INVALID_OPERATION);
+        // This is storage, so, it shold be stored again.
+        const position: Position = positions_[param.tokenId_DecLp].position_;
 
-    const positionLiquidity = position.liquidity_Pos;
-    do_require(positionLiquidity >= param.liquidity_DecLp, INVALID_OPERATION);
+        const positionLiquidity = position.liquidity_Pos;
+        do_require(positionLiquidity >= param.liquidity_DecLp, INVALID_OPERATION);
 
-    const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
-    const pool_param ?= call_view<address>(
-        factory, 
-        "computeAddress", 
-        (poolKey_param.token0_PoolKey, poolKey_param.token1_PoolKey, poolKey_param.fee_PoolKey)
-    ): INVALID_OPERATION;
-    
+        const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
+        const pool_param ?= call_view<address>(
+            factory, 
+            "computeAddress", 
+            (poolKey_param.token0_PoolKey, poolKey_param.token1_PoolKey, poolKey_param.fee_PoolKey)
+        ): INVALID_OPERATION;
+        
 
-    // guess return values
-    const retVal_burn ?= call_view<nat * nat>(kodexV3lib, "burn", (position.tickLower_Pos, position.tickUpper_Pos, param.liquidity_DecLp, pool_param)): INVALID_OPERATION;
-    const amount0 = retVal_burn[0];
-    const amount1 = retVal_burn[1];
+        // guess return values
+        const retVal_burn ?= call_view<nat * nat>(kodexV3lib, "burn", (position.tickLower_Pos, position.tickUpper_Pos, param.liquidity_DecLp, pool_param)): INVALID_OPERATION;
+        const amount0 = retVal_burn[0];
+        const amount1 = retVal_burn[1];
 
-    const positionInfo_param ?= call_view<PositionInfo>(
-        pool_param,
-        "mint_burn_PositionInfo_view",
-        (false, self_address, position.tickLower_Pos, position.tickUpper_Pos, param.liquidity_DecLp)
-    ): INVALID_OPERATION;
+        const positionInfo_param ?= call_view<PositionInfo>(
+            pool_param,
+            "mint_burn_PositionInfo_view",
+            (false, self_address, position.tickLower_Pos, position.tickUpper_Pos, param.liquidity_DecLp)
+        ): INVALID_OPERATION;
 
-    transfer 0tz to pool_param call burn<int * int * nat>((position.tickLower_Pos, position.tickUpper_Pos, param.liquidity_DecLp));
-    do_require((amount0 >= param.amount0Min_DecLp) and (amount1 >= param.amount1Min_DecLp), "Price slippage check");
+        transfer 0tz to pool_param call burn<int * int * nat>((position.tickLower_Pos, position.tickUpper_Pos, param.liquidity_DecLp));
+        do_require((amount0 >= param.amount0Min_DecLp) and (amount1 >= param.amount1Min_DecLp), "Price slippage check");
 
-    const feeGrowthInside0LastX128_param: nat = positionInfo_param.feeGrowthInside0LastX128_PosInfo;
-    const feeGrowthInside1LastX128_param: nat = positionInfo_param.feeGrowthInside1LastX128_PosInfo;
+        const feeGrowthInside0LastX128_param: nat = positionInfo_param.feeGrowthInside0LastX128_PosInfo;
+        const feeGrowthInside1LastX128_param: nat = positionInfo_param.feeGrowthInside1LastX128_PosInfo;
 
-    const owed0: nat ?= int_to_nat(feeGrowthInside0LastX128_param - position.feeGrowthInside0LastX128_Pos) : INVALID_OPERATION;
+        const owed0: nat ?= int_to_nat(feeGrowthInside0LastX128_param - position.feeGrowthInside0LastX128_Pos) : INVALID_OPERATION;
 
-    position.tokensOwed0_Pos += (amount0 + owed0 * positionLiquidity div Q128);
-    const owed1: nat ?= int_to_nat(feeGrowthInside1LastX128_param - position.feeGrowthInside1LastX128_Pos) : INVALID_OPERATION;
-    position.tokensOwed1_Pos += (amount1 + owed1 * positionLiquidity div Q128);
+        position.tokensOwed0_Pos += (amount0 + owed0 * positionLiquidity div Q128);
+        const owed1: nat ?= int_to_nat(feeGrowthInside1LastX128_param - position.feeGrowthInside1LastX128_Pos) : INVALID_OPERATION;
+        position.tokensOwed1_Pos += (amount1 + owed1 * positionLiquidity div Q128);
 
-    position.feeGrowthInside0LastX128_Pos := feeGrowthInside0LastX128_param;
-    position.feeGrowthInside1LastX128_Pos := feeGrowthInside1LastX128_param;
-    // subtraction is safe because we checked positionLiquidity is gte param.liquidity
-    position.liquidity_Pos ?:= int_to_nat(positionLiquidity - param.liquidity_DecLp) : INVALID_OPERATION;
+        position.feeGrowthInside0LastX128_Pos := feeGrowthInside0LastX128_param;
+        position.feeGrowthInside1LastX128_Pos := feeGrowthInside1LastX128_param;
+        // subtraction is safe because we checked positionLiquidity is gte param.liquidity
+        position.liquidity_Pos ?:= int_to_nat(positionLiquidity - param.liquidity_DecLp) : INVALID_OPERATION;
 
-    // This is storage, so, it is stored here again.
-    positions_[param.tokenId_DecLp].position_ := position;
+        // This is storage, so, it is stored here again.
+        positions_[param.tokenId_DecLp].position_ := position;
 
-    emit<DecreaseLiquidity>({param.tokenId_DecLp; param.liquidity_DecLp; amount0; amount1})
+        emit<DecreaseLiquidity>({param.tokenId_DecLp; param.liquidity_DecLp; amount0; amount1})
+    }
 }
 
 record CollectParams {
@@ -892,100 +895,106 @@ record CollectParams {
 
 /// @inheritdoc INonfungiblePositionManager
 entry collect(param: CollectParams) {
-    do_require(isAuthorizedForToken(param.tokenId_CollectParam), INVALID_OPERATION);
-    do_require((param.amount0Max_CollectParam > 0) or (param.amount1Max_CollectParam > 0), INVALID_OPERATION);
-    // allow collecting to the nft position manager address with address 0
-    // address recipient = param.recipient == address(0) ? address(this) : param.recipient;
-    var recipient_param: address = param.recipient_CollectParam;
+    no transfer
+    effect {
+        do_require(isAuthorizedForToken(param.tokenId_CollectParam), INVALID_OPERATION);
+        do_require((param.amount0Max_CollectParam > 0) or (param.amount1Max_CollectParam > 0), INVALID_OPERATION);
+        // allow collecting to the nft position manager address with address 0
+        // address recipient = param.recipient == address(0) ? address(this) : param.recipient;
+        var recipient_param: address = param.recipient_CollectParam;
 
-    // Position storage position = positions_[param.tokenId_CollectParam];
-    // This is storage, so, it shold be stored again.
-    const position: Position = positions_[param.tokenId_CollectParam].position_;
+        // Position storage position = positions_[param.tokenId_CollectParam];
+        // This is storage, so, it shold be stored again.
+        const position: Position = positions_[param.tokenId_CollectParam].position_;
 
-    const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
+        const poolKey_param: PoolKey = poolIdToPoolKey[position.poolId_Pos].poolKey;
 
-    const pool_param ?= call_view<address>(
-        factory, 
-        "computeAddress", 
-        (poolKey_param.token0_PoolKey, poolKey_param.token1_PoolKey, poolKey_param.fee_PoolKey)
-    ): INVALID_OPERATION;
-
-    var tokensOwed0 = position.tokensOwed0_Pos;
-    var tokensOwed1 = position.tokensOwed1_Pos;
-
-    // trigger an update of the position fees owed and fee growth snapshots if it has any liquidity
-    if (position.liquidity_Pos > 0) then begin
-        const positionInfo_param ?= call_view<PositionInfo>(
-            pool_param,
-            "mint_burn_PositionInfo_view",
-            (false, self_address, position.tickLower_Pos, position.tickUpper_Pos, 0)
+        const pool_param ?= call_view<address>(
+            factory, 
+            "computeAddress", 
+            (poolKey_param.token0_PoolKey, poolKey_param.token1_PoolKey, poolKey_param.fee_PoolKey)
         ): INVALID_OPERATION;
-        transfer 0tz to pool_param call burn<int * int * nat>((position.tickLower_Pos, position.tickUpper_Pos, 0));
-        const feeGrowthInside0LastX128_param: nat = positionInfo_param.feeGrowthInside0LastX128_PosInfo;
-        const feeGrowthInside1LastX128_param: nat = positionInfo_param.feeGrowthInside1LastX128_PosInfo;
-        const owed0: nat ?= int_to_nat(feeGrowthInside0LastX128_param - position.feeGrowthInside0LastX128_Pos) : INVALID_OPERATION;
-        tokensOwed0 += owed0 * position.liquidity_Pos div Q128;
-        const owed1: nat ?= int_to_nat(feeGrowthInside1LastX128_param - position.feeGrowthInside1LastX128_Pos) : INVALID_OPERATION;
-        tokensOwed1 += owed1 * position.liquidity_Pos div Q128;
 
-        position.feeGrowthInside0LastX128_Pos := feeGrowthInside0LastX128_param;
-        position.feeGrowthInside1LastX128_Pos := feeGrowthInside1LastX128_param
-    end;
+        var tokensOwed0 = position.tokensOwed0_Pos;
+        var tokensOwed1 = position.tokensOwed1_Pos;
 
-    // compute the arguments to give to the pool#collect method
-    const amount0Collect: nat = (param.amount1Max_CollectParam > tokensOwed1) ? tokensOwed1 : param.amount1Max_CollectParam;
-    const amount1Collect: nat = (param.amount1Max_CollectParam > tokensOwed1) ? tokensOwed1 : param.amount1Max_CollectParam;
+        // trigger an update of the position fees owed and fee growth snapshots if it has any liquidity
+        if (position.liquidity_Pos > 0) then begin
+            const positionInfo_param ?= call_view<PositionInfo>(
+                pool_param,
+                "mint_burn_PositionInfo_view",
+                (false, self_address, position.tickLower_Pos, position.tickUpper_Pos, 0)
+            ): INVALID_OPERATION;
+            transfer 0tz to pool_param call burn<int * int * nat>((position.tickLower_Pos, position.tickUpper_Pos, 0));
+            const feeGrowthInside0LastX128_param: nat = positionInfo_param.feeGrowthInside0LastX128_PosInfo;
+            const feeGrowthInside1LastX128_param: nat = positionInfo_param.feeGrowthInside1LastX128_PosInfo;
+            const owed0: nat ?= int_to_nat(feeGrowthInside0LastX128_param - position.feeGrowthInside0LastX128_Pos) : INVALID_OPERATION;
+            tokensOwed0 += owed0 * position.liquidity_Pos div Q128;
+            const owed1: nat ?= int_to_nat(feeGrowthInside1LastX128_param - position.feeGrowthInside1LastX128_Pos) : INVALID_OPERATION;
+            tokensOwed1 += owed1 * position.liquidity_Pos div Q128;
 
-    // the actual amounts collected are returned
-    transfer 0tz to pool_param call collect<address * int * int * nat * nat>((
-        recipient_param,
-        position.tickLower_Pos,
-        position.tickUpper_Pos,
-        amount0Collect,
-        amount1Collect
-    ));
+            position.feeGrowthInside0LastX128_Pos := feeGrowthInside0LastX128_param;
+            position.feeGrowthInside1LastX128_Pos := feeGrowthInside1LastX128_param
+        end;
 
-    // sometimes there will be a few less wei than expected due to rounding down in core, but we just subtract the full amount expected
-    // instead of the actual amount so we can burn the token
+        // compute the arguments to give to the pool#collect method
+        const amount0Collect: nat = (param.amount1Max_CollectParam > tokensOwed1) ? tokensOwed1 : param.amount1Max_CollectParam;
+        const amount1Collect: nat = (param.amount1Max_CollectParam > tokensOwed1) ? tokensOwed1 : param.amount1Max_CollectParam;
 
-    var tokenOwed0Sub: int = tokensOwed0 - amount0Collect;
-    var tokenOwed1Sub: int = tokensOwed1 - amount1Collect;
-    if tokenOwed0Sub < 0 then begin
-        tokenOwed0Sub := MAX_UINT128 - tokenOwed0Sub + 1; 
-    end;
+        // the actual amounts collected are returned
+        transfer 0tz to pool_param call collect<address * int * int * nat * nat>((
+            recipient_param,
+            position.tickLower_Pos,
+            position.tickUpper_Pos,
+            amount0Collect,
+            amount1Collect
+        ));
 
-    if tokenOwed1Sub < 0 then begin
-        tokenOwed1Sub := MAX_UINT128 - tokenOwed1Sub + 1; 
-    end;
-    
-    // position.tokensOwed0_Pos ?:= int_to_nat(tokensOwed0 - amount0Collect) : INVALID_OPERATION;
-    position.tokensOwed0_Pos ?:= int_to_nat(tokenOwed0Sub) : INVALID_OPERATION;
+        // sometimes there will be a few less wei than expected due to rounding down in core, but we just subtract the full amount expected
+        // instead of the actual amount so we can burn the token
 
-    // position.tokensOwed1_Pos ?:= int_to_nat(tokensOwed1 - amount1Collect) : INVALID_OPERATION;
-    position.tokensOwed1_Pos ?:= int_to_nat(tokenOwed1Sub) : INVALID_OPERATION;
+        var tokenOwed0Sub: int = tokensOwed0 - amount0Collect;
+        var tokenOwed1Sub: int = tokensOwed1 - amount1Collect;
+        if tokenOwed0Sub < 0 then begin
+            tokenOwed0Sub := MAX_UINT128 - tokenOwed0Sub + 1; 
+        end;
 
-    // This is storage, so, it is stored here again.
-    positions_[param.tokenId_CollectParam].position_ := position;
+        if tokenOwed1Sub < 0 then begin
+            tokenOwed1Sub := MAX_UINT128 - tokenOwed1Sub + 1; 
+        end;
+        
+        // position.tokensOwed0_Pos ?:= int_to_nat(tokensOwed0 - amount0Collect) : INVALID_OPERATION;
+        position.tokensOwed0_Pos ?:= int_to_nat(tokenOwed0Sub) : INVALID_OPERATION;
 
-    emit<Collect>({param.tokenId_CollectParam; recipient_param; amount0Collect; amount1Collect});
+        // position.tokensOwed1_Pos ?:= int_to_nat(tokensOwed1 - amount1Collect) : INVALID_OPERATION;
+        position.tokensOwed1_Pos ?:= int_to_nat(tokenOwed1Sub) : INVALID_OPERATION;
+
+        // This is storage, so, it is stored here again.
+        positions_[param.tokenId_CollectParam].position_ := position;
+
+        emit<Collect>({param.tokenId_CollectParam; recipient_param; amount0Collect; amount1Collect});
+    }
 }
 
 /// @inheritdoc INonfungiblePositionManager
 entry burn(tokenId: nat) {
-    do_require(isAuthorizedForToken(tokenId), INVALID_OPERATION);
-    // This is storage, so, it shold be stored again.
-    // Position storage position = positions_[tokenId];
-    const position: Position = positions_[tokenId].position_;
-    do_require((position.liquidity_Pos = 0) and (position.tokensOwed0_Pos = 0) and (position.tokensOwed1_Pos = 0), "Not cleared");
-    // This is storage, so, it is stored here again.
-    // delete positions_[tokenId];
-    positions_.remove(tokenId);
+    no transfer
+    effect {
+        do_require(isAuthorizedForToken(tokenId), INVALID_OPERATION);
+        // This is storage, so, it shold be stored again.
+        // Position storage position = positions_[tokenId];
+        const position: Position = positions_[tokenId].position_;
+        do_require((position.liquidity_Pos = 0) and (position.tokensOwed0_Pos = 0) and (position.tokensOwed1_Pos = 0), "Not cleared");
+        // This is storage, so, it is stored here again.
+        // delete positions_[tokenId];
+        positions_.remove(tokenId);
 
-    const token_owner ?= ledger[tokenId]?.lowner : FA2_TOKEN_UNDEFINED;
-    do_require(is_not_paused(), INVALID_OPERATION);
-    do_require(token_owner = caller, FA2_NOT_OWNER);
-    ledger.remove(tokenId);
-    token_metadata.remove(tokenId)
+        const token_owner ?= ledger[tokenId]?.lowner : FA2_TOKEN_UNDEFINED;
+        do_require(is_not_paused(), INVALID_OPERATION);
+        do_require(token_owner = caller, FA2_NOT_OWNER);
+        ledger.remove(tokenId);
+        token_metadata.remove(tokenId)
+    }
 }
 /// @inheritdoc IPoolInitializer
 entry initializePoolIfNecessary(
@@ -994,11 +1003,14 @@ entry initializePoolIfNecessary(
     fee_param: nat,
     sqrtPriceX96_param: nat
 ) {
-    // do_require(token0_param < token1_param, INVALID_OPERATION);
-    const pool_param: address ?= call_view<address>(factory, "computeAddress", (token0_param, token1_param, fee_param)): INVALID_OPERATION;
-    const slot0_param ?= call_view<Slot0>(pool_param, "getSlot0", Unit) : INVALID_OPERATION;
-    if (slot0_param.sqrtPriceX96 = 0) then 
-        transfer 0tz to pool_param call initialize< nat>(sqrtPriceX96_param)
+    no transfer
+    effect {
+        // do_require(token0_param < token1_param, INVALID_OPERATION);
+        const pool_param: address ?= call_view<address>(factory, "computeAddress", (token0_param, token1_param, fee_param)): INVALID_OPERATION;
+        const slot0_param ?= call_view<Slot0>(pool_param, "getSlot0", Unit) : INVALID_OPERATION;
+        if (slot0_param.sqrtPriceX96 = 0) then 
+            transfer 0tz to pool_param call initialize< nat>(sqrtPriceX96_param)
+    }
 }
 
 entry createPoolIfNecessary(
@@ -1006,11 +1018,14 @@ entry createPoolIfNecessary(
     token1_param: token_type,
     fee_param: nat
 ) {
-    // do_require(token0_param < token1_param, "token0 > token1");
-    // const pool_param: option<address> = call_view<address>(factory, "computeAddress", (token0_param, token1_param, fee_param));
+    no transfer
+    effect {
+        // do_require(token0_param < token1_param, "token0 > token1");
+        // const pool_param: option<address> = call_view<address>(factory, "computeAddress", (token0_param, token1_param, fee_param));
 
-    // if (is_none(pool_param)) then
-    transfer 0tz to factory call createPool<token_type * token_type * nat>((token0_param, token1_param, fee_param))
+        // if (is_none(pool_param)) then
+        transfer 0tz to factory call createPool<token_type * token_type * nat>((token0_param, token1_param, fee_param))
+    }
 }
 
 /// @inheritdoc IERC721
