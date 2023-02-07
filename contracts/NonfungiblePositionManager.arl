@@ -491,7 +491,9 @@ entry tokenTransferFromTo(token: token_type, sender: address, recipient_: addres
     effect {
         match token with
         | tez_token(tez_type) -> begin
-            transfer ((amount * 1tz) div 1_000_000) to recipient_
+            const tezAmount = (amount * 1tz) div 1_000_000;
+            do_require(transferred >= tezAmount, INVALID_OPERATION);
+            transfer tezAmount to recipient_
         end
         | fa12(fa12_type) -> begin
             transfer 0tz to fa12_type call %transfer<address * address * nat>((sender, recipient_, amount));
@@ -684,7 +686,7 @@ entry mint(param: MintParams) {
     ): "PERROR6";
 
     const pack_data: MintCallbackData = {poolKey_param; caller; param.amount0Min_MintParams; param.amount1Min_MintParams};
-    transfer 0tz to pool_param call mint<address * int * int * nat * bytes>((
+    transfer transferred to pool_param call mint<address * int * int * nat * bytes>((
         self_address,
         param.tickLower_MintParams,
         param.tickUpper_MintParams,
@@ -788,7 +790,7 @@ entry increaseLiquidity(param: IncreaseLiquidityParams) {
         (true, self_address, position.tickLower_Pos, position.tickUpper_Pos, liquidity)
     ): INVALID_OPERATION;
     const pack_data: MintCallbackData = {poolKey_param; caller; param.amount0Min_IncLp; param.amount1Min_IncLp};
-    transfer 0tz to pool_param call mint<address * int * int * nat * bytes>((
+    transfer transferred to pool_param call mint<address * int * int * nat * bytes>((
         self_address,
         position.tickLower_Pos,
         position.tickUpper_Pos,
@@ -1033,10 +1035,10 @@ entry kodexV3MintCallback(
     do_require(caller = pool_param, INVALID_OPERATION);
 
     if (amount0Owed > 0) then 
-        transfer 0tz to entry self.tokenTransferFromTo(decoded.poolKey_MintData.token0_PoolKey, decoded.payer_MintData, caller, amount0Owed);
+        transfer transferred to entry self.tokenTransferFromTo(decoded.poolKey_MintData.token0_PoolKey, decoded.payer_MintData, caller, amount0Owed);
         // transfer 0tz to decoded.poolKey_MintData.token0_PoolKey call %transfer<address * address * nat>((decoded.payer_MintData, caller, amount0Owed));
     if (amount1Owed > 0) then 
-        transfer 0tz to entry self.tokenTransferFromTo(decoded.poolKey_MintData.token1_PoolKey, decoded.payer_MintData, caller, amount1Owed);
+        transfer transferred to entry self.tokenTransferFromTo(decoded.poolKey_MintData.token1_PoolKey, decoded.payer_MintData, caller, amount1Owed);
         // transfer 0tz to decoded.poolKey_MintData.token1_PoolKey call %transfer<address * address * nat>((decoded.payer_MintData, caller, amount1Owed));
 
     do_require((amount0Owed >= decoded.amount0Min_MintData) and (amount1Owed >= decoded.amount1Min_MintData), "Price slippage check")

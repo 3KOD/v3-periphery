@@ -73,18 +73,20 @@ record transfer_param {
   tp_txs  : list<transfer_destination>;
 } as ((%from_, %txs))
 
-entry tokenTransferFromTo(token: token_type, sender: address, recipient: address, amount: nat) {
+entry tokenTransferFromTo(token: token_type, sender: address, recipient_: address, amount: nat) {
     called by self_address
     effect {
         match token with
         | tez_token(tez_type) -> begin
-            transfer ((amount * 1tz) div 1_000_000) to recipient
+            const tezAmount = (amount * 1tz) div 1_000_000;
+            do_require(transferred >= tezAmount, INVALID_OPERATION);
+            transfer tezAmount to recipient_
         end
         | fa12(fa12_type) -> begin
-            transfer 0tz to fa12_type call %transfer<address * address * nat>((sender, recipient, amount));
+            transfer 0tz to fa12_type call %transfer<address * address * nat>((sender, recipient_, amount));
         end
         | fa20(fa20_type_address, fa20_type_id) -> begin
-            transfer 0tz to fa20_type_address call %transfer<list<transfer_param>>([{sender; [{recipient; fa20_type_id; amount}]}]);
+            transfer 0tz to fa20_type_address call %transfer<list<transfer_param>>([{sender; [{recipient_; fa20_type_id; amount}]}]);
         end
         end
     }
@@ -119,11 +121,11 @@ entry kodexV3SwapCallback(
     const amountToPay_int: int = amount0Delta > 0 ?  amount0Delta : amount1Delta;
     const amountToPay: nat ?= int_to_nat(amountToPay_int) : INVALID_OPERATION;
     if (isExactInput) then begin
-        transfer 0tz to entry self.tokenTransferFromTo(tokenIn_param, data.payer_SwapCallbackData, caller, amountToPay)
+        transfer transferred to entry self.tokenTransferFromTo(tokenIn_param, data.payer_SwapCallbackData, caller, amountToPay)
         // transfer 0tz to tokenIn_param call %transfer<address * address * nat>((data.payer_SwapCallbackData, caller, amountToPay))
     end else begin
         tokenIn_param := tokenOut_param;
-        transfer 0tz to entry self.tokenTransferFromTo(tokenIn_param, data.payer_SwapCallbackData, caller, amountToPay);
+        transfer transferred to entry self.tokenTransferFromTo(tokenIn_param, data.payer_SwapCallbackData, caller, amountToPay);
         // transfer 0tz to tokenIn_param call %transfer<address * address * nat>((data.payer_SwapCallbackData, caller, amountToPay));
         amountInCached := amountToPay
     end
@@ -152,7 +154,7 @@ entry exactInputSingle(param: ExactInputSingleParams)
         sqrtPriceLimitX96_nat
         )
     ) : INVALID_OPERATION;
-    transfer 0tz to poolAddress call swap<address * bool * int * nat * bytes>((
+    transfer transferred to poolAddress call swap<address * bool * int * nat * bytes>((
         param.recipient_InSParam, 
         zeroForOne, 
         (param.amountIn_InSParam - 0), 
@@ -186,7 +188,7 @@ entry exactOutputSingle(param: ExactOutputSingleParams)
     const sqrtPriceLimitX96_nat: nat ?= int_to_nat(sqrtPriceLimitX96_int) : INVALID_OPERATION;
 
     const retVal_swap ?= call_view<int * int>(poolAddress, "swap_view", (zeroForOne, -param.amountOut_OutSParam, sqrtPriceLimitX96_nat)) : INVALID_OPERATION;
-    transfer 0tz to poolAddress call swap<address * bool * int * nat * bytes>((
+    transfer transferred to poolAddress call swap<address * bool * int * nat * bytes>((
         param.recipient_OutSParam, 
         zeroForOne, 
         -param.amountOut_OutSParam, 
