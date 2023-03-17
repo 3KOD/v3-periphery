@@ -1,0 +1,9 @@
+{
+  "name": "NonfungiblePositionManager",
+  "description": "Kodex V3 NonfungiblePositionManager",
+  "version": "1.0",
+  "license": { "name": "MIT" },
+  "authors": ["Mysterious team <topdirector2017@gmail.com>"],
+  "homepage": "https://kodkodkod.studio",
+  "interfaces": ["TZIP-012", "TZIP-016", "TZIP-017", "TZIP-021"]
+}
