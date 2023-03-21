@@ -554,9 +554,9 @@ record Slot0 {
     observationCardinalityNext: nat;
     // the current protocol fee as a percentage of the swap fee taken on withdrawal
     // represented as an integer denominator (1/x)%
-    feeProtocol: nat;
+    feeProtocol: nat
     // whether the pool is locked
-    unlocked: bool;
+    // unlocked: bool;
 }
 
 /// @notice Computes the amount of liquidity received for a given amount of token0 and price range
