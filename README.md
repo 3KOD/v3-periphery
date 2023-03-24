@@ -14,17 +14,17 @@ npm run gen-binding
 
 completium-cli deploy ./contracts/permits.arl --parameters '{"owner":"tz1afKmEFo11mpXr4JdodJDTXYLfw7GTFbak"}'
     total cost    : 1.834881 ꜩ
-    https://better-call.dev/ghostnet/KT1SXp6Jwdy2FSsjmVWjrxzsuBsdtmaqBbsL
+    https://better-call.dev/ghostnet/KT1Sy3pMPwXLBSBDsjbmZ4CwAJkPSbUXmTZb
 
 completium-cli deploy ./contracts/NonfungibleTokenPositionDescriptor.arl
     total cost    : 0.115877 ꜩ
-    https://better-call.dev/ghostnet/KT1CbxqJkB2ArSWZUp84PYqJudWfu3E2K6jN
+    https://better-call.dev/ghostnet/KT1XYLcdXvQCMF4MVfzvjbWe6yX5Um5iJFGJ
 
-completium-cli deploy ./contracts/NonfungiblePositionManager.arl --parameters '{"factory":"KT1H3PMQ4wJuMPiwCP4mCgy4m1knMTUZacZb", "tokenDescriptor": "KT1CbxqJkB2ArSWZUp84PYqJudWfu3E2K6jN", "kodexV3lib": "KT1KtbzHcike7oQTRgcnKC2fGYRUaHsuq4L6", "owner": "tz1afKmEFo11mpXr4JdodJDTXYLfw7GTFbak", "permits": "KT1SXp6Jwdy2FSsjmVWjrxzsuBsdtmaqBbsL"}'
+completium-cli deploy ./contracts/NonfungiblePositionManager.arl --parameters '{"factory":"KT1L7qXzdRgD2tMiYvS2VVFfeob43SKs5a5U", "tokenDescriptor": "KT1XYLcdXvQCMF4MVfzvjbWe6yX5Um5iJFGJ", "kodexV3lib": "KT1JqqYgRRYYq5kNPqYAUwWTtpuXZCtuAeaY", "owner": "tz1afKmEFo11mpXr4JdodJDTXYLfw7GTFbak", "permits": "KT1Sy3pMPwXLBSBDsjbmZ4CwAJkPSbUXmTZb"}'
     total cost    : 6.388042 ꜩ
-    https://better-call.dev/ghostnet/KT1WWjtMwqCs9DVKxKNhMzuqKXUCnzbrzf7q
+    https://better-call.dev/ghostnet/KT1LeoXmqZUqaBUkYMUhHrMYkUMaPuTwM8Zg
 
-completium-cli deploy ./contracts/SwapRouter.arl --parameters '{"factory":"KT1H3PMQ4wJuMPiwCP4mCgy4m1knMTUZacZb", "kodexV3lib": "KT1KtbzHcike7oQTRgcnKC2fGYRUaHsuq4L6"}'
+completium-cli deploy ./contracts/SwapRouter.arl --parameters '{"factory":"KT1L7qXzdRgD2tMiYvS2VVFfeob43SKs5a5U", "kodexV3lib": "KT1JqqYgRRYYq5kNPqYAUwWTtpuXZCtuAeaY"}'
     total cost    : 1.323178 ꜩ
-    https://better-call.dev/ghostnet/KT1LKGkpgggHVoMUpNaZ6W3RVmiqyncphtKP
+    https://better-call.dev/ghostnet/KT1KpyYEjy9XEBiAHH1r8YX4zHeV9FyQrcuu
 ```
